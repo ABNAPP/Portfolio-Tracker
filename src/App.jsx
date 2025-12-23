@@ -113,9 +113,10 @@ function App() {
   const { user, loading: authLoading, login, register, logout, firebaseError: authFirebaseError } = useAuth();
   
   // Data State - Use Firestore for syncing, fallback to localStorage
-  const [data, setData] = usePortfolioData(user, 'data', DEFAULT_DATA);
-  const [fx, setFx] = usePortfolioData(user, 'fx', DEFAULT_FX_RATES);
-  const [baseCurr, setBaseCurr] = usePortfolioData(user, 'baseCurr', 'SEK');
+  // Only use Firestore if user is logged in and Firebase is properly configured
+  const [data, setData] = usePortfolioData(user && !firebaseError ? user : null, 'data', DEFAULT_DATA);
+  const [fx, setFx] = usePortfolioData(user && !firebaseError ? user : null, 'fx', DEFAULT_FX_RATES);
+  const [baseCurr, setBaseCurr] = usePortfolioData(user && !firebaseError ? user : null, 'baseCurr', 'SEK');
   
   // Collections (transactions, chartData, historyProfiles) - still using localStorage for now
   // TODO: Implement Firestore collections for these
@@ -151,7 +152,12 @@ function App() {
   
   // Migrate data to Firestore on first login
   useEffect(() => {
-    if (!user?.uid || !db) return;
+    // Only run migration if user is logged in and db is available
+    if (!user?.uid) return;
+    if (!db || firebaseError) {
+      console.log('[App] Skipping migration - db not available or Firebase error');
+      return;
+    }
     
     // Check if we need to migrate old localStorage data
     const oldDataKey = 'pf_data_v24';
@@ -197,7 +203,7 @@ function App() {
     } catch (err) {
       console.warn('[App] Error during migration check:', err);
     }
-  }, [user?.uid, db, setData]);
+  }, [user?.uid, db, firebaseError, setData]);
   
   // Fetch FX rates on mount
   useEffect(() => {
