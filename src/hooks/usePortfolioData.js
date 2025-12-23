@@ -50,20 +50,28 @@ export const usePortfolioData = (user, key, defaultValue) => {
   // Save to Firestore
   const saveToFirestore = useCallback(async (value, uid) => {
     if (!db || !uid || firebaseError) {
+      console.warn(`[PortfolioData] Cannot save to Firestore - db: ${!!db}, uid: ${!!uid}, firebaseError: ${!!firebaseError}`);
       return;
     }
 
     try {
       const docRef = getPortfolioDoc(uid);
-      if (!docRef) return;
+      if (!docRef) {
+        console.warn(`[PortfolioData] getPortfolioDoc returned null for uid: ${uid}`);
+        return;
+      }
       
+      console.log(`[PortfolioData] Saving ${key} to Firestore for user ${uid}`);
       await setDoc(
         docRef,
         { [key]: value, updatedAt: new Date().toISOString() },
         { merge: true }
       );
+      console.log(`[PortfolioData] Successfully saved ${key} to Firestore`);
     } catch (err) {
       console.error(`[PortfolioData] Failed to save to Firestore:`, err);
+      console.error(`[PortfolioData] Error code:`, err.code);
+      console.error(`[PortfolioData] Error message:`, err.message);
       throw err;
     }
   }, [key]);
@@ -112,13 +120,19 @@ export const usePortfolioData = (user, key, defaultValue) => {
             setError(null);
           } else {
             // Document doesn't exist - try loading from localStorage and create doc
+            console.log(`[PortfolioData] Document doesn't exist for ${key}, loading from localStorage`);
             const localData = loadFromLocalStorage(user.uid);
+            console.log(`[PortfolioData] Loaded from localStorage:`, localData !== defaultValue ? 'has data' : 'default');
             setData(localData);
-            if (localData !== defaultValue) {
-              saveToFirestore(localData, user.uid).catch(err => {
-                console.warn(`[PortfolioData] Failed to sync local data to Firestore:`, err);
-              });
-            }
+            // Always try to save to Firestore, even if it's default (to create the document)
+            saveToFirestore(localData, user.uid).then(() => {
+              console.log(`[PortfolioData] Successfully migrated ${key} to Firestore`);
+            }).catch(err => {
+              console.warn(`[PortfolioData] Failed to sync local data to Firestore:`, err);
+              if (err.code === 'permission-denied') {
+                console.error(`[PortfolioData] PERMISSION DENIED - Check Firestore security rules!`);
+              }
+            });
           }
           setLoading(false);
         },
@@ -152,17 +166,28 @@ export const usePortfolioData = (user, key, defaultValue) => {
     setData(prevData => {
       const valueToStore = typeof newData === 'function' ? newData(prevData) : newData;
       
+      console.log(`[PortfolioData] updateData called for ${key}, user: ${user?.uid}`);
+      
       // Save to localStorage immediately
       if (user?.uid) {
         saveToLocalStorage(valueToStore, user.uid);
       }
 
-      // Save to Firestore asynchronously
+      // Save to Firestore asynchronously - ALWAYS try to save if user is logged in
       if (user?.uid && db && !firebaseError) {
-        saveToFirestore(valueToStore, user.uid).catch(err => {
-          console.warn(`[PortfolioData] Failed to save ${key} to Firestore:`, err);
-          setError(err);
+        saveToFirestore(valueToStore, user.uid).then(() => {
+          console.log(`[PortfolioData] Successfully saved ${key} update to Firestore`);
+        }).catch(err => {
+          console.error(`[PortfolioData] Failed to save ${key} to Firestore:`, err);
+          if (err.code === 'permission-denied') {
+            console.error(`[PortfolioData] PERMISSION DENIED - Firestore security rules may not be configured!`);
+            setError(new Error('Firestore permission denied. Please check security rules.'));
+          } else {
+            setError(err);
+          }
         });
+      } else {
+        console.warn(`[PortfolioData] Not saving to Firestore - user: ${!!user?.uid}, db: ${!!db}, firebaseError: ${!!firebaseError}`);
       }
 
       return valueToStore;

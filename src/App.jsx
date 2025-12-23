@@ -19,6 +19,8 @@ import {
   FirebaseConfigError
 } from './components';
 import { useLocalStorage, useApi, useBenchmark, useAuth, usePortfolioData } from './hooks';
+import { getPortfolioDoc } from './config/firebase';
+import { getDoc } from 'firebase/firestore';
 import { firebaseError } from './config/firebase';
 import { TRANSLATIONS } from './utils/translations';
 import { 
@@ -138,6 +140,56 @@ function App() {
       document.documentElement.classList.remove('dark');
     }
   }, [theme]);
+  
+  // Migrate data to Firestore on first login
+  useEffect(() => {
+    if (!user?.uid || !db) return;
+    
+    // Check if we need to migrate old localStorage data
+    const oldDataKey = 'pf_data_v24';
+    const oldFxKey = 'pf_fx_rates_v24';
+    const oldBaseCurrKey = 'base_curr';
+    
+    try {
+      const oldData = localStorage.getItem(oldDataKey);
+      const oldFx = localStorage.getItem(oldFxKey);
+      const oldBaseCurr = localStorage.getItem(oldBaseCurrKey);
+      
+      if (oldData || oldFx || oldBaseCurr) {
+        console.log('[App] Found old localStorage data, checking if migration needed...');
+        
+        // Check if data already exists in Firestore
+        const docRef = getPortfolioDoc(user.uid);
+        
+        if (docRef) {
+          getDoc(docRef).then(snapshot => {
+            if (!snapshot.exists()) {
+              console.log('[App] Firestore document doesn\'t exist, migrating from localStorage...');
+              // Data will be migrated automatically by usePortfolioData hook
+              // But we can trigger it explicitly here
+              if (oldData) {
+                try {
+                  const parsedData = JSON.parse(oldData);
+                  if (parsedData && (parsedData.holdings?.length > 0 || parsedData.cashAccounts?.length > 0)) {
+                    console.log('[App] Migrating portfolio data to Firestore...');
+                    setData(parsedData);
+                  }
+                } catch (e) {
+                  console.warn('[App] Failed to parse old data:', e);
+                }
+              }
+            } else {
+              console.log('[App] Firestore document already exists, no migration needed');
+            }
+          }).catch(err => {
+            console.warn('[App] Error checking Firestore document:', err);
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[App] Error during migration check:', err);
+    }
+  }, [user?.uid, db, setData]);
   
   // Fetch FX rates on mount
   useEffect(() => {
