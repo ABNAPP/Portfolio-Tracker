@@ -13,4 +13,7 @@ export { default as HoldingsTable } from './HoldingsTable';
 export { default as AddHoldingForm } from './AddHoldingForm';
 export { default as DashboardCards } from './DashboardCards';
 
+// Auth Components
+export { AuthScreen } from './AuthScreen';
+
 

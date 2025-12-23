@@ -164,6 +164,49 @@ portfolio-tracker/
 └── README.md
 ```
 
+## 🔐 Firebase Autentisering
+
+Appen använder Firebase Authentication för att skydda din portföljdata. Alla användare måste logga in för att komma åt appen.
+
+### Konfigurera Firebase
+
+1. Skapa ett Firebase-projekt på [Firebase Console](https://console.firebase.google.com/)
+2. Aktivera **Authentication** → **Email/Password** i Firebase Console
+3. Lägg till en Web-app i Firebase-projektet
+4. Kopiera Firebase-konfigurationsvärdena
+
+### Environment Variables i Vercel
+
+Lägg till dessa environment variables i Vercel Dashboard → Project Settings → Environment Variables:
+
+```
+VITE_FIREBASE_API_KEY
+VITE_FIREBASE_AUTH_DOMAIN
+VITE_FIREBASE_PROJECT_ID
+VITE_FIREBASE_STORAGE_BUCKET
+VITE_FIREBASE_MESSAGING_SENDER_ID
+VITE_FIREBASE_APP_ID
+VITE_FIREBASE_MEASUREMENT_ID
+```
+
+Du hittar dessa värden i Firebase Console → Project Settings → Your apps → Web app → Config.
+
+### Lokal utveckling
+
+För lokal utveckling kan du skapa en `.env.local`-fil i projektets rot:
+
+```env
+VITE_FIREBASE_API_KEY=your_api_key_here
+VITE_FIREBASE_AUTH_DOMAIN=your_project_id.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project_id.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
+VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
+```
+
+**Viktigt:** Lägg till `.env.local` i `.gitignore` för att inte committa dina nycklar.
+
 ## 🔧 API-nycklar
 
 För att hämta live-kurser behöver du API-nycklar från:

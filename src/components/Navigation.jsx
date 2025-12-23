@@ -5,7 +5,8 @@ import {
   Sun, 
   Moon, 
   Eye, 
-  EyeOff
+  EyeOff,
+  LogOut
 } from 'lucide-react';
 
 /**
@@ -22,6 +23,7 @@ const Navigation = memo(({
   setPrivacyMode,
   onUpdateAll,
   isUpdating,
+  onLogout,
   t
 }) => {
   const tabs = [
@@ -118,6 +120,17 @@ const Navigation = memo(({
               )}
             </button>
           </div>
+          
+          {/* Logout Button */}
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className={iconBtnClass}
+              title="Logga ut"
+            >
+              <LogOut size={16} />
+            </button>
+          )}
         </div>
       </div>
     </nav>

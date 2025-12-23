@@ -14,9 +14,10 @@ import {
   PerformanceChart,
   DonutChart,
   DividendBarChart,
-  Heatmap
+  Heatmap,
+  AuthScreen
 } from './components';
-import { useLocalStorage, useApi, useBenchmark } from './hooks';
+import { useLocalStorage, useApi, useBenchmark, useAuth } from './hooks';
 import { TRANSLATIONS } from './utils/translations';
 import { 
   CURRENCIES, 
@@ -126,6 +127,9 @@ function App() {
       extra: apiKeys.extra || ''
     };
   }, [apiKeys]);
+  
+  // Auth
+  const { user, loading: authLoading, login, register, logout } = useAuth();
   
   // Hooks
   const { showNotification, hideNotification, NotificationComponent } = useNotification();
@@ -1012,6 +1016,20 @@ function App() {
       : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
   }`;
 
+  // Show loading spinner while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+      </div>
+    );
+  }
+
+  // Show auth screen if user is not logged in
+  if (!user) {
+    return <AuthScreen onLogin={login} onRegister={register} />;
+  }
+
   return (
     <ErrorBoundary t={t}>
       <div className={`min-h-screen font-sans pb-20 transition-colors ${
@@ -1093,6 +1111,7 @@ function App() {
           setPrivacyMode={setPrivacyMode}
           onUpdateAll={handleUpdateAll}
           isUpdating={Object.values(apiStatus).includes('loading')}
+          onLogout={logout}
           t={t}
         />
         
