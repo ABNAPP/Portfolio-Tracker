@@ -1,7 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, collection, doc } from 'firebase/firestore';
 
 // Firebase Configuration
 // Uses environment variables with VITE_ prefix, with fallback to default config
@@ -105,4 +105,25 @@ try {
 }
 
 export { app, auth, db, analytics, firebaseError };
+
+// Helper functions for Firestore paths
+export const getPortfolioDoc = (uid) => {
+  if (!db || !uid) return null;
+  return doc(db, 'users', uid, 'portfolio', 'data');
+};
+
+export const getTransactionsCollection = (uid) => {
+  if (!db || !uid) return null;
+  return collection(db, 'users', uid, 'transactions');
+};
+
+export const getChartDataCollection = (uid) => {
+  if (!db || !uid) return null;
+  return collection(db, 'users', uid, 'chartData');
+};
+
+export const getHistoryProfilesCollection = (uid) => {
+  if (!db || !uid) return null;
+  return collection(db, 'users', uid, 'historyProfiles');
+};
 

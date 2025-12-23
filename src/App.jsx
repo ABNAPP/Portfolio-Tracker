@@ -18,7 +18,7 @@ import {
   AuthScreen,
   FirebaseConfigError
 } from './components';
-import { useLocalStorage, useApi, useBenchmark, useAuth } from './hooks';
+import { useLocalStorage, useApi, useBenchmark, useAuth, usePortfolioData } from './hooks';
 import { firebaseError } from './config/firebase';
 import { TRANSLATIONS } from './utils/translations';
 import { 
@@ -99,13 +99,19 @@ function App() {
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   
-  // Data State
-  const [data, setData] = useLocalStorage('pf_data_v24', DEFAULT_DATA);
+  // Auth
+  const { user, loading: authLoading, login, register, logout, firebaseError: authFirebaseError } = useAuth();
+  
+  // Data State - Use Firestore for syncing, fallback to localStorage
+  const [data, setData] = usePortfolioData(user, 'data', DEFAULT_DATA);
+  const [fx, setFx] = usePortfolioData(user, 'fx', DEFAULT_FX_RATES);
+  const [baseCurr, setBaseCurr] = usePortfolioData(user, 'baseCurr', 'SEK');
+  
+  // Collections (transactions, chartData, historyProfiles) - still using localStorage for now
+  // TODO: Implement Firestore collections for these
   const [transactions, setTransactions] = useLocalStorage('pf_trans_v24', []);
   const [chartData, setChartData] = useLocalStorage('pf_chart_v24', []);
   const [historyProfiles, setHistoryProfiles] = useLocalStorage('pf_hist_v25', []);
-  const [fx, setFx] = useLocalStorage('pf_fx_rates_v24', DEFAULT_FX_RATES);
-  const [baseCurr, setBaseCurr] = useLocalStorage('base_curr', 'SEK');
   
   // API Keys - Read only from environment variables
   const effectiveApiKeys = useMemo(() => ({
@@ -115,9 +121,6 @@ function App() {
     alphaVantage: import.meta.env.VITE_ALPHAVANTAGE_API_KEY || '',
     extra: ''
   }), []);
-  
-  // Auth
-  const { user, loading: authLoading, login, register, logout, firebaseError: authFirebaseError } = useAuth();
   
   // Hooks
   const { showNotification, hideNotification, NotificationComponent } = useNotification();
