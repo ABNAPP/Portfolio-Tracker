@@ -11,15 +11,15 @@ import {
 } from './components';
 
 // Lazy load modals and charts for better code splitting
-const PriceModal = lazy(() => import('./components/modals/PriceModal').then(m => ({ default: m.PriceModal })));
-const SellModal = lazy(() => import('./components/modals/SellModal').then(m => ({ default: m.SellModal })));
-const EditSourceModal = lazy(() => import('./components/modals/EditSourceModal').then(m => ({ default: m.EditSourceModal })));
-const DeleteSourceModal = lazy(() => import('./components/modals/DeleteSourceModal').then(m => ({ default: m.DeleteSourceModal })));
-const TransactionModal = lazy(() => import('./components/modals/TransactionModal').then(m => ({ default: m.TransactionModal })));
-const PerformanceChart = lazy(() => import('./components/charts/PerformanceChart').then(m => ({ default: m.PerformanceChart })));
-const DonutChart = lazy(() => import('./components/charts/DonutChart').then(m => ({ default: m.DonutChart })));
-const DividendBarChart = lazy(() => import('./components/charts/DividendBarChart').then(m => ({ default: m.DividendBarChart })));
-const Heatmap = lazy(() => import('./components/charts/Heatmap').then(m => ({ default: m.Heatmap })));
+const PriceModal = lazy(() => import('./components/modals/PriceModal'));
+const SellModal = lazy(() => import('./components/modals/SellModal'));
+const EditSourceModal = lazy(() => import('./components/modals/EditSourceModal'));
+const DeleteSourceModal = lazy(() => import('./components/modals/DeleteSourceModal'));
+const TransactionModal = lazy(() => import('./components/modals/TransactionModal'));
+const PerformanceChart = lazy(() => import('./components/charts/PerformanceChart'));
+const DonutChart = lazy(() => import('./components/charts/DonutChart'));
+const DividendBarChart = lazy(() => import('./components/charts/DividendBarChart'));
+const Heatmap = lazy(() => import('./components/charts/Heatmap'));
 
 // Loading fallback component
 const ModalLoader = () => (
@@ -114,9 +114,16 @@ function App() {
   
   // Data State - Use Firestore for syncing, fallback to localStorage
   // Only use Firestore if user is logged in and Firebase is properly configured
-  const [data, setData] = usePortfolioData(user && !firebaseError ? user : null, 'data', DEFAULT_DATA);
-  const [fx, setFx] = usePortfolioData(user && !firebaseError ? user : null, 'fx', DEFAULT_FX_RATES);
-  const [baseCurr, setBaseCurr] = usePortfolioData(user && !firebaseError ? user : null, 'baseCurr', 'SEK');
+  // #region agent log
+  const userForPortfolioData = user && !firebaseError ? user : null;
+  fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:117',message:'before usePortfolioData',data:{hasUser:!!user,userUid:user?.uid,hasFirebaseError:!!firebaseError,userForPortfolioData:!!userForPortfolioData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F,G'})}).catch(()=>{});
+  // #endregion
+  const [data, setData] = usePortfolioData(userForPortfolioData, 'data', DEFAULT_DATA);
+  const [fx, setFx] = usePortfolioData(userForPortfolioData, 'fx', DEFAULT_FX_RATES);
+  const [baseCurr, setBaseCurr] = usePortfolioData(userForPortfolioData, 'baseCurr', 'SEK');
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:121',message:'after usePortfolioData',data:{dataType:typeof data,hasData:!!data},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F,G'})}).catch(()=>{});
+  // #endregion
   
   // Collections (transactions, chartData, historyProfiles) - still using localStorage for now
   // TODO: Implement Firestore collections for these
@@ -1090,16 +1097,28 @@ function App() {
 
   // Show auth screen if user is not logged in
   // But only if Firebase auth is available - otherwise allow app to work without auth
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:1093',message:'checking auth before render',data:{authType:typeof auth,authIsNull:auth===null,authIsUndefined:auth===undefined,hasUser:!!user,hasFirebaseError:!!firebaseError,authValue:auth},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,D'})}).catch(()=>{});
+  // #endregion
   if (!user && auth && !firebaseError) {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:1094',message:'showing AuthScreen',data:{authType:typeof auth,authIsNull:auth===null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     return <AuthScreen onLogin={login} onRegister={register} />;
   }
   
   // If Firebase is not configured, allow app to work without authentication
   // User will use localStorage only
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:1099',message:'checking auth fallback',data:{authType:typeof auth,authIsNull:auth===null,authIsUndefined:auth===undefined,hasFirebaseError:!!firebaseError},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,D'})}).catch(()=>{});
+  // #endregion
   if (!auth || firebaseError) {
     console.warn('[App] Firebase not configured - app will work with localStorage only');
   }
 
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:1103',message:'rendering main app',data:{hasUser:!!user,userUid:user?.uid,hasData:!!data,hasFirebaseError:!!firebaseError},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F,G,H'})}).catch(()=>{});
+  // #endregion
   return (
     <ErrorBoundary t={t}>
       <div className={`min-h-screen font-sans pb-20 transition-colors ${
