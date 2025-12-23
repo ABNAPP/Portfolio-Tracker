@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user owns the resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Users collection - users can only read/write their own data
+    match /users/{userId} {
+      // User can only access their own user document
+      allow read, write: if isOwner(userId);
+      
+      // Portfolio data - user-specific
+      match /portfolio/{document=**} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      // Transactions - user-specific
+      match /transactions/{transactionId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      // Chart data - user-specific
+      match /chartData/{chartId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      // History profiles - user-specific
+      match /historyProfiles/{profileId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+  }
+}
+
