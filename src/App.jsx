@@ -107,28 +107,14 @@ function App() {
   const [fx, setFx] = useLocalStorage('pf_fx_rates_v24', DEFAULT_FX_RATES);
   const [baseCurr, setBaseCurr] = useLocalStorage('base_curr', 'SEK');
   
-  // API Keys - Read from localStorage, fallback to environment variables
-  const getApiKeysFromEnv = () => ({
+  // API Keys - Read only from environment variables
+  const effectiveApiKeys = useMemo(() => ({
     eodhd: import.meta.env.VITE_EODHD_API_KEY || '',
     marketstack: import.meta.env.VITE_MARKETSTACK_API_KEY || '',
     finnhub: import.meta.env.VITE_FINNHUB_API_KEY || '',
     alphaVantage: import.meta.env.VITE_ALPHAVANTAGE_API_KEY || '',
     extra: ''
-  });
-
-  const [apiKeys, setApiKeys] = useLocalStorage('pf_api_keys', getApiKeysFromEnv());
-  
-  // Merge environment variables with localStorage (env vars take precedence if set)
-  const effectiveApiKeys = useMemo(() => {
-    const envKeys = getApiKeysFromEnv();
-    return {
-      eodhd: envKeys.eodhd || apiKeys.eodhd,
-      marketstack: envKeys.marketstack || apiKeys.marketstack,
-      finnhub: envKeys.finnhub || apiKeys.finnhub,
-      alphaVantage: envKeys.alphaVantage || apiKeys.alphaVantage,
-      extra: apiKeys.extra || ''
-    };
-  }, [apiKeys]);
+  }), []);
   
   // Auth
   const { user, loading: authLoading, login, register, logout, firebaseError: authFirebaseError } = useAuth();
@@ -672,7 +658,7 @@ function App() {
   // Update all prices
   const handleUpdateAll = useCallback(async () => {
     if (!effectiveApiKeys.finnhub && !effectiveApiKeys.eodhd) {
-      showNotification('Lägg till API-nycklar i inställningarna', 'warning');
+      showNotification('API-nycklar saknas. Lägg till environment variables för att hämta live-kurser.', 'warning');
       return;
     }
     await updateAllPrices(data.holdings, effectiveApiKeys, updatePrice);
@@ -970,13 +956,12 @@ function App() {
         theme,
         lang,
         baseCurr,
-        fx,
-        apiKeys: effectiveApiKeys
+        fx
       }
     };
     exportBackupJSON(backupData);
     showNotification('Backup sparad!', 'success');
-  }, [data, transactions, chartData, historyProfiles, theme, lang, baseCurr, fx, effectiveApiKeys, showNotification]);
+  }, [data, transactions, chartData, historyProfiles, theme, lang, baseCurr, fx, showNotification]);
 
   const handleRestore = useCallback(async (e) => {
     const file = e.target.files?.[0];
@@ -998,14 +983,14 @@ function App() {
         }
         setBaseCurr(backup.settings.baseCurr || 'SEK');
         if (backup.settings.fx) setFx(backup.settings.fx);
-        if (backup.settings.apiKeys) setApiKeys(backup.settings.apiKeys);
+        // API keys are no longer stored in backup - they come from environment variables
       }
       showNotification(t.msg_restore_ok, 'success');
     } catch (err) {
       showNotification(t.msg_restore_err, 'error');
     }
     e.target.value = '';
-  }, [setData, setTransactions, setChartData, setHistoryProfiles, setTheme, setBaseCurr, setFx, setApiKeys, showNotification, t]);
+  }, [setData, setTransactions, setChartData, setHistoryProfiles, setTheme, setBaseCurr, setFx, showNotification, t]);
 
   // Card styles
   const cardClass = `rounded-xl border shadow-sm transition-all hover:shadow-md ${
@@ -1914,38 +1899,6 @@ function App() {
                   >
                     {CURRENCIES.map(c => <option key={c}>{c}</option>)}
                   </select>
-                </div>
-              </div>
-              
-              {/* API Keys */}
-              <div className="space-y-4 mb-8">
-                <h4 className="font-bold">{t.api_settings}</h4>
-                <div>
-                  <label className="text-xs font-bold block mb-1 text-emerald-500">{t.api_prio_eodhd}</label>
-                  <input
-                    value={apiKeys.eodhd}
-                    onChange={e => setApiKeys(k => ({ ...k, eodhd: e.target.value }))}
-                    className={inputClass}
-                    type="password"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold block mb-1">{t.api_prio_1}</label>
-                  <input
-                    value={apiKeys.finnhub}
-                    onChange={e => setApiKeys(k => ({ ...k, finnhub: e.target.value }))}
-                    className={inputClass}
-                    type="password"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold block mb-1">{t.api_prio_2}</label>
-                  <input
-                    value={apiKeys.alphaVantage}
-                    onChange={e => setApiKeys(k => ({ ...k, alphaVantage: e.target.value }))}
-                    className={inputClass}
-                    type="password"
-                  />
                 </div>
               </div>
               
