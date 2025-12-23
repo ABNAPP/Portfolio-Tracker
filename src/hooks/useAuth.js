@@ -12,8 +12,14 @@ export const useAuth = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.js:14',message:'useAuth useEffect entry',data:{authType:typeof auth,authIsNull:auth===null,authIsUndefined:auth===undefined,hasFirebaseError:!!firebaseError},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,D'})}).catch(()=>{});
+    // #endregion
     // If Firebase failed to initialize, set loading to false immediately
     if (firebaseError || !auth) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.js:16',message:'auth check failed',data:{authType:typeof auth,authIsNull:auth===null,authIsUndefined:auth===undefined,hasFirebaseError:!!firebaseError,firebaseErrorMessage:firebaseError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,D'})}).catch(()=>{});
+      // #endregion
       console.error('[Auth] Firebase not initialized:', firebaseError?.message);
       setLoading(false);
       return;
@@ -22,6 +28,9 @@ export const useAuth = () => {
     let isMounted = true;
 
     // Set up auth state listener
+    // #region agent log
+    fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useAuth.js:25',message:'setting up onAuthStateChanged',data:{authType:typeof auth,authIsNull:auth===null,authIsUndefined:auth===undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
     const unsubscribe = onAuthStateChanged(
       auth,
       (authUser) => {

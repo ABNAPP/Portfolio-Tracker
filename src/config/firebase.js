@@ -3,16 +3,16 @@ import { getAnalytics, isSupported } from 'firebase/analytics';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, collection, doc } from 'firebase/firestore';
 
-// Firebase Configuration
-// Uses environment variables with VITE_ prefix, with fallback to default config
+// Firebase Configuration - Read ONLY from environment variables
+// No fallback values - production should fail gracefully if vars are missing
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBcklKADSt7jclx9TfekSuHJH_797FikME",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "portfolio-tracker-771a9.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "portfolio-tracker-771a9",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "portfolio-tracker-771a9.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "274252523468",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:274252523468:web:2d4d3743789f2e48b75f69",
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-6M10S608P1"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 // Helper to check if we're in local development
@@ -30,16 +30,26 @@ export const isLocalDev = () => {
   return false;
 };
 
-// Validate Firebase configuration
+// Validate Firebase configuration - all required variables must be present
 const validateFirebaseConfig = () => {
-  const required = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'];
-  const missing = required.filter(key => !firebaseConfig[key]);
+  const required = [
+    { key: 'apiKey', envVar: 'VITE_FIREBASE_API_KEY' },
+    { key: 'authDomain', envVar: 'VITE_FIREBASE_AUTH_DOMAIN' },
+    { key: 'projectId', envVar: 'VITE_FIREBASE_PROJECT_ID' },
+    { key: 'storageBucket', envVar: 'VITE_FIREBASE_STORAGE_BUCKET' },
+    { key: 'messagingSenderId', envVar: 'VITE_FIREBASE_MESSAGING_SENDER_ID' },
+    { key: 'appId', envVar: 'VITE_FIREBASE_APP_ID' }
+  ];
+  
+  const missing = required.filter(({ key }) => !firebaseConfig[key]);
   
   if (missing.length > 0) {
+    const missingVars = missing.map(({ envVar }) => envVar).join(', ');
     return {
       valid: false,
-      missing,
-      message: `Firebase configuration is missing: ${missing.join(', ')}. Please add environment variables in Vercel.`
+      missing: missing.map(({ key }) => key),
+      missingVars,
+      message: `Firebase configuration is incomplete. Missing environment variables: ${missingVars}. Please add these in Vercel Dashboard → Settings → Environment Variables.`
     };
   }
   
@@ -49,14 +59,9 @@ const validateFirebaseConfig = () => {
 // Initialize Firebase - ensure we only initialize once
 let app = null;
 let auth = null;
-let db = null; // Will be initialized below
+let db = null;
 let analytics = null;
 let firebaseError = null;
-
-// Ensure db is always defined (even if null) to avoid "db is not defined" errors
-if (typeof db === 'undefined') {
-  db = null;
-}
 
 try {
   // Validate configuration first
@@ -64,13 +69,12 @@ try {
   
   if (!validation.valid) {
     firebaseError = new Error(validation.message);
-    console.error('[Firebase] Configuration error:', validation.message);
-    console.error('[Firebase] Missing variables:', validation.missing);
-    console.error('[Firebase] Please add the following environment variables in Vercel:');
-    validation.missing.forEach(key => {
-      console.error(`  - VITE_FIREBASE_${key.toUpperCase().replace(/([A-Z])/g, '_$1')}`);
-    });
+    console.error('[Firebase] ❌ Configuration Error');
+    console.error('[Firebase]', validation.message);
+    console.error('[Firebase] Missing variables:', validation.missingVars);
+    console.error('[Firebase] This must be fixed before the app can function.');
   } else {
+    // All required config is present - initialize Firebase
     const existingApps = getApps();
     
     if (existingApps.length > 0) {
@@ -78,16 +82,16 @@ try {
       console.log('[Firebase] Reusing existing Firebase app');
     } else {
       app = initializeApp(firebaseConfig);
-      console.log('[Firebase] ✅ Initialized');
+      console.log('[Firebase] ✅ Initialized successfully');
     }
     
     auth = getAuth(app);
     db = getFirestore(app);
     
     // Initialize Analytics if supported and measurementId is available
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && firebaseConfig.measurementId) {
       isSupported().then((supported) => {
-        if (supported && firebaseConfig.measurementId) {
+        if (supported) {
           try {
             analytics = getAnalytics(app);
             console.log('[Firebase] Analytics initialized');
@@ -95,27 +99,29 @@ try {
             console.warn('[Firebase] Analytics initialization failed:', error);
           }
         } else {
-          console.log('[Firebase] Analytics not supported or measurementId not provided');
+          console.log('[Firebase] Analytics not supported');
         }
       });
     }
     
     const isDev = isLocalDev();
-    console.log(`[Firebase] ${isDev ? 'LOCAL DEV' : 'PRODUCTION'} - Auth and Firestore initialized`);
+    console.log(`[Firebase] ${isDev ? 'LOCAL DEV' : 'PRODUCTION'} - Auth and Firestore ready`);
   }
 } catch (error) {
   firebaseError = error;
-  console.error('[Firebase] Error initializing Firebase:', error);
-  console.error('[Firebase] Error details:', error.message);
+  console.error('[Firebase] ❌ Initialization Error');
+  console.error('[Firebase]', error.message);
+  if (error.code) {
+    console.error('[Firebase] Error code:', error.code);
+  }
 }
 
 export { app, auth, db, analytics, firebaseError };
 
 // Helper functions for Firestore paths
-// These functions check if db is available before using it
+// These functions safely return null if db is not initialized
 export const getPortfolioDoc = (uid) => {
   if (!db || !uid) {
-    console.warn('[Firebase] getPortfolioDoc: db not initialized or uid missing');
     return null;
   }
   try {
@@ -128,7 +134,6 @@ export const getPortfolioDoc = (uid) => {
 
 export const getTransactionsCollection = (uid) => {
   if (!db || !uid) {
-    console.warn('[Firebase] getTransactionsCollection: db not initialized or uid missing');
     return null;
   }
   try {
@@ -141,7 +146,6 @@ export const getTransactionsCollection = (uid) => {
 
 export const getChartDataCollection = (uid) => {
   if (!db || !uid) {
-    console.warn('[Firebase] getChartDataCollection: db not initialized or uid missing');
     return null;
   }
   try {
@@ -154,7 +158,6 @@ export const getChartDataCollection = (uid) => {
 
 export const getHistoryProfilesCollection = (uid) => {
   if (!db || !uid) {
-    console.warn('[Firebase] getHistoryProfilesCollection: db not initialized or uid missing');
     return null;
   }
   try {
@@ -164,4 +167,3 @@ export const getHistoryProfilesCollection = (uid) => {
     return null;
   }
 };
-

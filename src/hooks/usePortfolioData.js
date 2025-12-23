@@ -10,6 +10,9 @@ const getStorageKey = (uid, key) => `pf_${uid}_${key}`;
  * Falls back to localStorage if Firestore is unavailable or user is not logged in
  */
 export const usePortfolioData = (user, key, defaultValue) => {
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'usePortfolioData.js:12',message:'usePortfolioData entry',data:{hasUser:!!user,userUid:user?.uid,key,userType:typeof user},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F,G'})}).catch(()=>{});
+  // #endregion
   const [data, setData] = useState(defaultValue);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

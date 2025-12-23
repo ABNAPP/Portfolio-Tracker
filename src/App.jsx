@@ -114,16 +114,10 @@ function App() {
   
   // Data State - Use Firestore for syncing, fallback to localStorage
   // Only use Firestore if user is logged in and Firebase is properly configured
-  // #region agent log
   const userForPortfolioData = user && !firebaseError ? user : null;
-  fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:117',message:'before usePortfolioData',data:{hasUser:!!user,userUid:user?.uid,hasFirebaseError:!!firebaseError,userForPortfolioData:!!userForPortfolioData},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F,G'})}).catch(()=>{});
-  // #endregion
   const [data, setData] = usePortfolioData(userForPortfolioData, 'data', DEFAULT_DATA);
   const [fx, setFx] = usePortfolioData(userForPortfolioData, 'fx', DEFAULT_FX_RATES);
   const [baseCurr, setBaseCurr] = usePortfolioData(userForPortfolioData, 'baseCurr', 'SEK');
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:121',message:'after usePortfolioData',data:{dataType:typeof data,hasData:!!data},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F,G'})}).catch(()=>{});
-  // #endregion
   
   // Collections (transactions, chartData, historyProfiles) - still using localStorage for now
   // TODO: Implement Firestore collections for these
