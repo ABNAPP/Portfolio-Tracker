@@ -28,7 +28,7 @@ const ModalLoader = () => (
   </div>
 );
 import { useLocalStorage, useApi, useBenchmark, useAuth, usePortfolioData } from './hooks';
-import { getPortfolioDoc, db, firebaseError } from './config/firebase';
+import { getPortfolioDoc, db, auth, firebaseError } from './config/firebase';
 import { getDoc } from 'firebase/firestore';
 import { TRANSLATIONS } from './utils/translations';
 import { 
