@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { onSnapshot, setDoc } from 'firebase/firestore';
-import { db, getPortfolioDoc, firebaseError } from '../config/firebase';
+import { db, getPortfolioDoc, firebaseError, setFirestorePermissionError } from '../config/firebase';
 
 // Helper to get localStorage key for a user
 const getStorageKey = (uid, key) => `pf_${uid}_${key}`;
@@ -10,9 +10,6 @@ const getStorageKey = (uid, key) => `pf_${uid}_${key}`;
  * Falls back to localStorage if Firestore is unavailable or user is not logged in
  */
 export const usePortfolioData = (user, key, defaultValue) => {
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'usePortfolioData.js:12',message:'usePortfolioData entry',data:{hasUser:!!user,userUid:user?.uid,key,userType:typeof user},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F,G'})}).catch(()=>{});
-  // #endregion
   const [data, setData] = useState(defaultValue);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -75,6 +72,13 @@ export const usePortfolioData = (user, key, defaultValue) => {
       console.error(`[PortfolioData] Failed to save to Firestore:`, err);
       console.error(`[PortfolioData] Error code:`, err.code);
       console.error(`[PortfolioData] Error message:`, err.message);
+      
+      // Check for permission errors and set global error
+      if (err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED' || 
+          (err.message && err.message.includes('Missing or insufficient permissions'))) {
+        setFirestorePermissionError(err);
+      }
+      
       throw err;
     }
   }, [key]);
@@ -145,9 +149,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
                   console.log(`[PortfolioData] Successfully migrated ${key} to Firestore`);
                 }).catch(err => {
                   console.warn(`[PortfolioData] Failed to sync local data to Firestore:`, err);
-                  if (err.code === 'permission-denied') {
-                    console.error(`[PortfolioData] PERMISSION DENIED - Check Firestore security rules!`);
-                  }
+                  // Permission errors are already handled in saveToFirestore
                 });
               }
             }
@@ -162,6 +164,13 @@ export const usePortfolioData = (user, key, defaultValue) => {
         },
         (err) => {
           console.error(`[PortfolioData] Firestore listener error for ${key}:`, err);
+          
+          // Check for permission errors and set global error
+          if (err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED' || 
+              (err.message && err.message.includes('Missing or insufficient permissions'))) {
+            setFirestorePermissionError(err);
+          }
+          
           setError(err);
           // Fallback to localStorage on error
           try {
@@ -176,6 +185,13 @@ export const usePortfolioData = (user, key, defaultValue) => {
       );
     } catch (err) {
       console.error(`[PortfolioData] Failed to set up listener for ${key}:`, err);
+      
+      // Check for permission errors
+      if (err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED' || 
+          (err.message && err.message.includes('Missing or insufficient permissions'))) {
+        setFirestorePermissionError(err);
+      }
+      
       setError(err);
       try {
         const localData = loadFromLocalStorage(user.uid);
@@ -213,12 +229,8 @@ export const usePortfolioData = (user, key, defaultValue) => {
           console.log(`[PortfolioData] Successfully saved ${key} update to Firestore`);
         }).catch(err => {
           console.error(`[PortfolioData] Failed to save ${key} to Firestore:`, err);
-          if (err.code === 'permission-denied') {
-            console.error(`[PortfolioData] PERMISSION DENIED - Firestore security rules may not be configured!`);
-            setError(new Error('Firestore permission denied. Please check security rules.'));
-          } else {
-            setError(err);
-          }
+          // Permission errors are already handled in saveToFirestore
+          setError(err);
         });
       } else {
         console.warn(`[PortfolioData] Not saving to Firestore - user: ${!!user?.uid}, db: ${!!db}, firebaseError: ${!!firebaseError}`);

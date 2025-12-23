@@ -28,7 +28,7 @@ const ModalLoader = () => (
   </div>
 );
 import { useLocalStorage, useApi, useBenchmark, useAuth, usePortfolioData } from './hooks';
-import { getPortfolioDoc, db, auth, firebaseError } from './config/firebase';
+import { getPortfolioDoc, db, auth, firebaseError, getFirebaseError } from './config/firebase';
 import { getDoc } from 'firebase/firestore';
 import { TRANSLATIONS } from './utils/translations';
 import { 
@@ -1073,11 +1073,12 @@ function App() {
       : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
   }`;
 
-  // Show Firebase configuration error if Firebase failed to initialize
-  // But only if it's a critical error - allow app to work with localStorage fallback
-  if (firebaseError && firebaseError.message?.includes('missing')) {
-    // Only show error if critical config is missing
-    return <FirebaseConfigError error={firebaseError} />;
+  // Check for Firebase errors (configuration or permission errors)
+  const effectiveFirebaseError = getFirebaseError();
+  
+  // Show Firebase configuration error if Firebase failed to initialize or permission denied
+  if (effectiveFirebaseError) {
+    return <FirebaseConfigError error={effectiveFirebaseError} />;
   }
 
   // Show loading spinner while checking auth
@@ -1091,28 +1092,15 @@ function App() {
 
   // Show auth screen if user is not logged in
   // But only if Firebase auth is available - otherwise allow app to work without auth
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:1093',message:'checking auth before render',data:{authType:typeof auth,authIsNull:auth===null,authIsUndefined:auth===undefined,hasUser:!!user,hasFirebaseError:!!firebaseError,authValue:auth},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,D'})}).catch(()=>{});
-  // #endregion
   if (!user && auth && !firebaseError) {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:1094',message:'showing AuthScreen',data:{authType:typeof auth,authIsNull:auth===null},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     return <AuthScreen onLogin={login} onRegister={register} />;
   }
   
   // If Firebase is not configured, allow app to work without authentication
   // User will use localStorage only
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:1099',message:'checking auth fallback',data:{authType:typeof auth,authIsNull:auth===null,authIsUndefined:auth===undefined,hasFirebaseError:!!firebaseError},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,D'})}).catch(()=>{});
-  // #endregion
   if (!auth || firebaseError) {
     console.warn('[App] Firebase not configured - app will work with localStorage only');
   }
-
-  // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/9366ed46-4065-4258-92ec-f1b8aa3b48a5',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:1103',message:'rendering main app',data:{hasUser:!!user,userUid:user?.uid,hasData:!!data,hasFirebaseError:!!firebaseError},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F,G,H'})}).catch(()=>{});
-  // #endregion
   return (
     <ErrorBoundary t={t}>
       <div className={`min-h-screen font-sans pb-20 transition-colors ${

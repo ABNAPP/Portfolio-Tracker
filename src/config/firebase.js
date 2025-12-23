@@ -56,6 +56,33 @@ const validateFirebaseConfig = () => {
   return { valid: true };
 };
 
+// Global error state for Firestore permission errors
+let firestorePermissionError = null;
+
+// Function to check if error is a permission error
+export const isPermissionError = (error) => {
+  if (!error) return false;
+  return error.code === 'permission-denied' || 
+         error.code === 'PERMISSION_DENIED' ||
+         (error.message && error.message.includes('Missing or insufficient permissions')) ||
+         (error.message && error.message.includes('permission'));
+};
+
+// Function to set Firestore permission error
+export const setFirestorePermissionError = (error) => {
+  if (isPermissionError(error)) {
+    firestorePermissionError = new Error('Firestore permissions saknas. Kontrollera Firestore Rules i Firebase Console.');
+    console.error('[Firebase] ❌ Firestore Permission Error');
+    console.error('[Firebase]', firestorePermissionError.message);
+    console.error('[Firebase] Original error:', error.message);
+  }
+};
+
+// Function to clear Firestore permission error
+export const clearFirestorePermissionError = () => {
+  firestorePermissionError = null;
+};
+
 // Initialize Firebase - ensure we only initialize once
 let app = null;
 let auth = null;
@@ -115,6 +142,11 @@ try {
     console.error('[Firebase] Error code:', error.code);
   }
 }
+
+// Get the effective error - either configuration error or permission error
+export const getFirebaseError = () => {
+  return firestorePermissionError || firebaseError;
+};
 
 export { app, auth, db, analytics, firebaseError };
 
