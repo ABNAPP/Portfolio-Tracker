@@ -12,6 +12,20 @@ export default defineConfig({
       overlay: true
     }
   },
+  build: {
+    chunkSizeWarningLimit: 1000, // Öka gränsen till 1000 kB för att undvika varningar
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Separera stora bibliotek i egna chunks
+          'react-vendor': ['react', 'react-dom'],
+          'chart-vendor': ['recharts'],
+          'firebase-vendor': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+          'map-vendor': ['react-simple-maps']
+        }
+      }
+    }
+  },
   logLevel: 'info',
   clearScreen: false // Behåll output synlig (samma som GANTT)
 })

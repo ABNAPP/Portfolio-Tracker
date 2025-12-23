@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from 'react';
 import {
   Navigation,
   DashboardCards,
@@ -6,18 +6,27 @@ import {
   ErrorBoundary,
   Notification,
   useNotification,
-  PriceModal,
-  SellModal,
-  EditSourceModal,
-  DeleteSourceModal,
-  TransactionModal,
-  PerformanceChart,
-  DonutChart,
-  DividendBarChart,
-  Heatmap,
   AuthScreen,
   FirebaseConfigError
 } from './components';
+
+// Lazy load modals and charts for better code splitting
+const PriceModal = lazy(() => import('./components/modals/PriceModal').then(m => ({ default: m.PriceModal })));
+const SellModal = lazy(() => import('./components/modals/SellModal').then(m => ({ default: m.SellModal })));
+const EditSourceModal = lazy(() => import('./components/modals/EditSourceModal').then(m => ({ default: m.EditSourceModal })));
+const DeleteSourceModal = lazy(() => import('./components/modals/DeleteSourceModal').then(m => ({ default: m.DeleteSourceModal })));
+const TransactionModal = lazy(() => import('./components/modals/TransactionModal').then(m => ({ default: m.TransactionModal })));
+const PerformanceChart = lazy(() => import('./components/charts/PerformanceChart').then(m => ({ default: m.PerformanceChart })));
+const DonutChart = lazy(() => import('./components/charts/DonutChart').then(m => ({ default: m.DonutChart })));
+const DividendBarChart = lazy(() => import('./components/charts/DividendBarChart').then(m => ({ default: m.DividendBarChart })));
+const Heatmap = lazy(() => import('./components/charts/Heatmap').then(m => ({ default: m.Heatmap })));
+
+// Loading fallback component
+const ModalLoader = () => (
+  <div className="flex items-center justify-center p-8">
+    <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+  </div>
+);
 import { useLocalStorage, useApi, useBenchmark, useAuth, usePortfolioData } from './hooks';
 import { getPortfolioDoc } from './config/firebase';
 import { getDoc } from 'firebase/firestore';
@@ -1084,67 +1093,87 @@ function App() {
       }`}>
         {NotificationComponent}
         
-        {/* Modals */}
-        <PriceModal
-          isOpen={priceModalOpen}
-          onClose={() => setPriceModalOpen(false)}
-          onSave={updatePrice}
-          stock={selectedStock}
-          t={t}
-          theme={theme}
-        />
+        {/* Modals - Lazy loaded with Suspense */}
+        <Suspense fallback={null}>
+          {priceModalOpen && (
+            <PriceModal
+              isOpen={priceModalOpen}
+              onClose={() => setPriceModalOpen(false)}
+              onSave={updatePrice}
+              stock={selectedStock}
+              t={t}
+              theme={theme}
+            />
+          )}
+        </Suspense>
         
-        <SellModal
-          isOpen={sellModalOpen}
-          onClose={() => setSellModalOpen(false)}
-          onSell={handleSell}
-          stock={selectedStock}
-          t={t}
-          fx={fx}
-          theme={theme}
-          baseCurr={baseCurr}
-          privacyMode={privacyMode}
-        />
+        <Suspense fallback={null}>
+          {sellModalOpen && (
+            <SellModal
+              isOpen={sellModalOpen}
+              onClose={() => setSellModalOpen(false)}
+              onSell={handleSell}
+              stock={selectedStock}
+              t={t}
+              fx={fx}
+              theme={theme}
+              baseCurr={baseCurr}
+              privacyMode={privacyMode}
+            />
+          )}
+        </Suspense>
         
-        <EditSourceModal
-          isOpen={editSourceModalOpen}
-          onClose={() => setEditSourceModalOpen(false)}
-          stock={stockToEdit}
-          onSelect={handleEditSourceSelect}
-          t={t}
-          theme={theme}
-        />
+        <Suspense fallback={null}>
+          {editSourceModalOpen && (
+            <EditSourceModal
+              isOpen={editSourceModalOpen}
+              onClose={() => setEditSourceModalOpen(false)}
+              stock={stockToEdit}
+              onSelect={handleEditSourceSelect}
+              t={t}
+              theme={theme}
+            />
+          )}
+        </Suspense>
         
-        <DeleteSourceModal
-          isOpen={deleteSourceModalOpen}
-          onClose={() => setDeleteSourceModalOpen(false)}
-          stock={stockToEdit}
-          onDelete={handleDelete}
-          onDeleteAll={handleDeleteAll}
-          t={t}
-          theme={theme}
-        />
+        <Suspense fallback={null}>
+          {deleteSourceModalOpen && (
+            <DeleteSourceModal
+              isOpen={deleteSourceModalOpen}
+              onClose={() => setDeleteSourceModalOpen(false)}
+              stock={stockToEdit}
+              onDelete={handleDelete}
+              onDeleteAll={handleDeleteAll}
+              t={t}
+              theme={theme}
+            />
+          )}
+        </Suspense>
         
-        <TransactionModal
-          isOpen={transactionModalOpen}
-          onClose={() => {
-            setTransactionModalOpen(false);
-            setEditId(null);
-            setForm(DEFAULT_FORM);
-          }}
-          form={form}
-          setForm={setForm}
-          editId={editId}
-          onSave={handleSave}
-          onSearch={handleSearch}
-          searchResults={searchResults}
-          onSelectResult={handleSelectResult}
-          isSearching={isSearching}
-          t={t}
-          fx={fx}
-          baseCurr={baseCurr}
-          theme={theme}
-        />
+        <Suspense fallback={null}>
+          {transactionModalOpen && (
+            <TransactionModal
+              isOpen={transactionModalOpen}
+              onClose={() => {
+                setTransactionModalOpen(false);
+                setEditId(null);
+                setForm(DEFAULT_FORM);
+              }}
+              form={form}
+              setForm={setForm}
+              editId={editId}
+              onSave={handleSave}
+              onSearch={handleSearch}
+              searchResults={searchResults}
+              onSelectResult={handleSelectResult}
+              isSearching={isSearching}
+              t={t}
+              fx={fx}
+              baseCurr={baseCurr}
+              theme={theme}
+            />
+          )}
+        </Suspense>
         
         {/* Navigation */}
         <Navigation
@@ -1195,7 +1224,9 @@ function App() {
                     <Map size={14} /> {t.heatmap_title}
                   </h3>
                 </div>
-                <Heatmap items={stats.enriched} theme={theme} baseCurr={baseCurr} />
+                <Suspense fallback={<div className="h-64 flex items-center justify-center">Laddar...</div>}>
+                  <Heatmap items={stats.enriched} theme={theme} baseCurr={baseCurr} />
+                </Suspense>
               </div>
               
               {/* Holdings Table */}
@@ -1288,13 +1319,15 @@ function App() {
                     </div>
                   </div>
                 </div>
-                <PerformanceChart
-                  data={filteredChart}
-                  benchmarkData={benchmarkChartData}
-                  showBenchmark={showBenchmark}
-                  theme={theme}
-                  baseCurr={baseCurr}
-                />
+                <Suspense fallback={<div className="h-96 flex items-center justify-center">Laddar graf...</div>}>
+                  <PerformanceChart
+                    data={filteredChart}
+                    benchmarkData={benchmarkChartData}
+                    showBenchmark={showBenchmark}
+                    theme={theme}
+                    baseCurr={baseCurr}
+                  />
+                </Suspense>
               </div>
               
               {/* Stats Grid */}
@@ -1338,36 +1371,42 @@ function App() {
               {/* Donut Charts Row */}
               <div className={`${cardClass} p-6`}>
                 <h3 className="font-bold mb-4">{t.chart_industry_title}</h3>
-                <DonutChart
-                  data={stats.secData}
-                  theme={theme}
-                  centerValue={stats.netWorth}
-                  centerLabel={t.total_value}
-                  baseCurr={baseCurr}
-                  masked={privacyMode}
-                />
+                <Suspense fallback={<div className="h-64 flex items-center justify-center">Laddar...</div>}>
+                  <DonutChart
+                    data={stats.secData}
+                    theme={theme}
+                    centerValue={stats.netWorth}
+                    centerLabel={t.total_value}
+                    baseCurr={baseCurr}
+                    masked={privacyMode}
+                  />
+                </Suspense>
               </div>
               <div className={`${cardClass} p-6`}>
                 <h3 className="font-bold mb-4">{t.chart_region_title}</h3>
-                <DonutChart
-                  data={stats.regData}
-                  theme={theme}
-                  centerValue={stats.netWorth}
-                  centerLabel={t.total_value}
-                  baseCurr={baseCurr}
-                  masked={privacyMode}
-                />
+                <Suspense fallback={<div className="h-64 flex items-center justify-center">Laddar...</div>}>
+                  <DonutChart
+                    data={stats.regData}
+                    theme={theme}
+                    centerValue={stats.netWorth}
+                    centerLabel={t.total_value}
+                    baseCurr={baseCurr}
+                    masked={privacyMode}
+                  />
+                </Suspense>
               </div>
               <div className={`${cardClass} p-6`}>
                 <h3 className="font-bold mb-4">{t.chart_holding_title}</h3>
-                <DonutChart
-                  data={stats.holdingData}
-                  theme={theme}
-                  centerValue={stats.netWorth}
-                  centerLabel={t.total_value}
-                  baseCurr={baseCurr}
-                  masked={privacyMode}
-                />
+                <Suspense fallback={<div className="h-64 flex items-center justify-center">Laddar...</div>}>
+                  <DonutChart
+                    data={stats.holdingData}
+                    theme={theme}
+                    centerValue={stats.netWorth}
+                    centerLabel={t.total_value}
+                    baseCurr={baseCurr}
+                    masked={privacyMode}
+                  />
+                </Suspense>
               </div>
               
               {/* Risk Analysis */}
@@ -1701,11 +1740,13 @@ function App() {
             <div className="space-y-6">
               <div className={`${cardClass} p-6`}>
                 <h3 className="font-bold mb-4">{t.estimated_monthly_dividend}</h3>
-                <DividendBarChart
-                  data={stats.monthlyDivData}
-                  theme={theme}
-                  baseCurr={baseCurr}
-                />
+                <Suspense fallback={<div className="h-64 flex items-center justify-center">Laddar...</div>}>
+                  <DividendBarChart
+                    data={stats.monthlyDivData}
+                    theme={theme}
+                    baseCurr={baseCurr}
+                  />
+                </Suspense>
               </div>
               <div className={`${cardClass} p-6`}>
                 <h3 className="text-xl font-bold mb-4">{t.cal_title}</h3>
