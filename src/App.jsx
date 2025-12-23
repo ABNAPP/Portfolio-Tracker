@@ -1073,8 +1073,10 @@ function App() {
   }`;
 
   // Show Firebase configuration error if Firebase failed to initialize
-  if (firebaseError || authFirebaseError) {
-    return <FirebaseConfigError error={firebaseError || authFirebaseError} />;
+  // But only if it's a critical error - allow app to work with localStorage fallback
+  if (firebaseError && firebaseError.message?.includes('missing')) {
+    // Only show error if critical config is missing
+    return <FirebaseConfigError error={firebaseError} />;
   }
 
   // Show loading spinner while checking auth
@@ -1087,8 +1089,15 @@ function App() {
   }
 
   // Show auth screen if user is not logged in
-  if (!user) {
+  // But only if Firebase auth is available - otherwise allow app to work without auth
+  if (!user && auth && !firebaseError) {
     return <AuthScreen onLogin={login} onRegister={register} />;
+  }
+  
+  // If Firebase is not configured, allow app to work without authentication
+  // User will use localStorage only
+  if (!auth || firebaseError) {
+    console.warn('[App] Firebase not configured - app will work with localStorage only');
   }
 
   return (
