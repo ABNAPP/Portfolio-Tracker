@@ -1,3 +1,4 @@
+// Kopiera detta till Firebase Console → Firestore Database → Rules → Publish
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -16,26 +17,31 @@ service cloud.firestore {
       // User can only access their own user document
       allow read, write: if isOwner(userId);
       
-      // Portfolio data - user-specific
+      // Portfolio data document: users/{uid}/portfolio/data
+      // This stores the main portfolio data (data, fx, baseCurr fields)
       match /portfolio/{document=**} {
         allow read, write: if isOwner(userId);
       }
       
-      // Transactions - user-specific
+      // Transactions collection: users/{uid}/transactions/{transactionId}
       match /transactions/{transactionId} {
         allow read, write: if isOwner(userId);
       }
       
-      // Chart data - user-specific
+      // Chart data collection: users/{uid}/chartData/{chartId}
       match /chartData/{chartId} {
         allow read, write: if isOwner(userId);
       }
       
-      // History profiles - user-specific
+      // History profiles collection: users/{uid}/historyProfiles/{profileId}
       match /historyProfiles/{profileId} {
         allow read, write: if isOwner(userId);
       }
     }
+    
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }
-

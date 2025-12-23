@@ -2,6 +2,7 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, collection, doc } from 'firebase/firestore';
+import { logger } from '../utils/logger';
 
 // Firebase Configuration - Read ONLY from environment variables
 // No fallback values - production should fail gracefully if vars are missing
@@ -72,9 +73,9 @@ export const isPermissionError = (error) => {
 export const setFirestorePermissionError = (error) => {
   if (isPermissionError(error)) {
     firestorePermissionError = new Error('Firestore permissions saknas. Kontrollera Firestore Rules i Firebase Console.');
-    console.error('[Firebase] ❌ Firestore Permission Error');
-    console.error('[Firebase]', firestorePermissionError.message);
-    console.error('[Firebase] Original error:', error.message);
+    logger.error('[Firebase] ❌ Firestore Permission Error');
+    logger.error('[Firebase]', firestorePermissionError.message);
+    logger.error('[Firebase] Original error:', error.message);
   }
 };
 
@@ -96,20 +97,20 @@ try {
   
   if (!validation.valid) {
     firebaseError = new Error(validation.message);
-    console.error('[Firebase] ❌ Configuration Error');
-    console.error('[Firebase]', validation.message);
-    console.error('[Firebase] Missing variables:', validation.missingVars);
-    console.error('[Firebase] This must be fixed before the app can function.');
+    logger.error('[Firebase] ❌ Configuration Error');
+    logger.error('[Firebase]', validation.message);
+    logger.error('[Firebase] Missing variables:', validation.missingVars);
+    logger.error('[Firebase] This must be fixed before the app can function.');
   } else {
     // All required config is present - initialize Firebase
     const existingApps = getApps();
     
     if (existingApps.length > 0) {
       app = existingApps[0];
-      console.log('[Firebase] Reusing existing Firebase app');
+      logger.log('[Firebase] Reusing existing Firebase app');
     } else {
       app = initializeApp(firebaseConfig);
-      console.log('[Firebase] ✅ Initialized successfully');
+      logger.log('[Firebase] ✅ Initialized successfully');
     }
     
     auth = getAuth(app);
@@ -121,25 +122,25 @@ try {
         if (supported) {
           try {
             analytics = getAnalytics(app);
-            console.log('[Firebase] Analytics initialized');
+            logger.log('[Firebase] Analytics initialized');
           } catch (error) {
-            console.warn('[Firebase] Analytics initialization failed:', error);
+            logger.warn('[Firebase] Analytics initialization failed:', error);
           }
         } else {
-          console.log('[Firebase] Analytics not supported');
+          logger.log('[Firebase] Analytics not supported');
         }
       });
     }
     
     const isDev = isLocalDev();
-    console.log(`[Firebase] ${isDev ? 'LOCAL DEV' : 'PRODUCTION'} - Auth and Firestore ready`);
+    logger.log(`[Firebase] ${isDev ? 'LOCAL DEV' : 'PRODUCTION'} - Auth and Firestore ready`);
   }
 } catch (error) {
   firebaseError = error;
-  console.error('[Firebase] ❌ Initialization Error');
-  console.error('[Firebase]', error.message);
+  logger.error('[Firebase] ❌ Initialization Error');
+  logger.error('[Firebase]', error.message);
   if (error.code) {
-    console.error('[Firebase] Error code:', error.code);
+    logger.error('[Firebase] Error code:', error.code);
   }
 }
 
@@ -159,7 +160,7 @@ export const getPortfolioDoc = (uid) => {
   try {
     return doc(db, 'users', uid, 'portfolio', 'data');
   } catch (err) {
-    console.error('[Firebase] getPortfolioDoc error:', err);
+    logger.error('[Firebase] getPortfolioDoc error:', err);
     return null;
   }
 };
@@ -171,7 +172,7 @@ export const getTransactionsCollection = (uid) => {
   try {
     return collection(db, 'users', uid, 'transactions');
   } catch (err) {
-    console.error('[Firebase] getTransactionsCollection error:', err);
+    logger.error('[Firebase] getTransactionsCollection error:', err);
     return null;
   }
 };
@@ -183,7 +184,7 @@ export const getChartDataCollection = (uid) => {
   try {
     return collection(db, 'users', uid, 'chartData');
   } catch (err) {
-    console.error('[Firebase] getChartDataCollection error:', err);
+    logger.error('[Firebase] getChartDataCollection error:', err);
     return null;
   }
 };
@@ -195,7 +196,7 @@ export const getHistoryProfilesCollection = (uid) => {
   try {
     return collection(db, 'users', uid, 'historyProfiles');
   } catch (err) {
-    console.error('[Firebase] getHistoryProfilesCollection error:', err);
+    logger.error('[Firebase] getHistoryProfilesCollection error:', err);
     return null;
   }
 };

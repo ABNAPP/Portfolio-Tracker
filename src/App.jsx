@@ -30,6 +30,7 @@ const ModalLoader = () => (
 import { useLocalStorage, useApi, useBenchmark, useAuth, usePortfolioData } from './hooks';
 import { getPortfolioDoc, db, auth, firebaseError, getFirebaseError } from './config/firebase';
 import { getDoc } from 'firebase/firestore';
+import { logger } from './utils/logger';
 import { TRANSLATIONS } from './utils/translations';
 import { 
   CURRENCIES, 
@@ -110,7 +111,7 @@ function App() {
   const [isSearching, setIsSearching] = useState(false);
   
   // Auth
-  const { user, loading: authLoading, login, register, logout, firebaseError: authFirebaseError } = useAuth();
+  const { user, loading: authLoading, login, register, logout } = useAuth();
   
   // Data State - Use Firestore for syncing, fallback to localStorage
   // Only use Firestore if user is logged in and Firebase is properly configured
@@ -130,8 +131,7 @@ function App() {
     eodhd: import.meta.env.VITE_EODHD_API_KEY || '',
     marketstack: import.meta.env.VITE_MARKETSTACK_API_KEY || '',
     finnhub: import.meta.env.VITE_FINNHUB_API_KEY || '',
-    alphaVantage: import.meta.env.VITE_ALPHAVANTAGE_API_KEY || '',
-    extra: ''
+    alphaVantage: import.meta.env.VITE_ALPHAVANTAGE_API_KEY || ''
   }), []);
   
   // Hooks
@@ -156,7 +156,7 @@ function App() {
     // Only run migration if user is logged in and db is available
     if (!user?.uid) return;
     if (!db || firebaseError) {
-      console.log('[App] Skipping migration - db not available or Firebase error');
+      logger.log('[App] Skipping migration - db not available or Firebase error');
       return;
     }
     
@@ -171,7 +171,7 @@ function App() {
       const oldBaseCurr = localStorage.getItem(oldBaseCurrKey);
       
       if (oldData || oldFx || oldBaseCurr) {
-        console.log('[App] Found old localStorage data, checking if migration needed...');
+        logger.log('[App] Found old localStorage data, checking if migration needed...');
         
         // Check if data already exists in Firestore
         const docRef = getPortfolioDoc(user.uid);
@@ -179,30 +179,30 @@ function App() {
         if (docRef) {
           getDoc(docRef).then(snapshot => {
             if (!snapshot.exists()) {
-              console.log('[App] Firestore document doesn\'t exist, migrating from localStorage...');
+              logger.log('[App] Firestore document doesn\'t exist, migrating from localStorage...');
               // Data will be migrated automatically by usePortfolioData hook
               // But we can trigger it explicitly here
               if (oldData) {
                 try {
                   const parsedData = JSON.parse(oldData);
                   if (parsedData && (parsedData.holdings?.length > 0 || parsedData.cashAccounts?.length > 0)) {
-                    console.log('[App] Migrating portfolio data to Firestore...');
+                    logger.log('[App] Migrating portfolio data to Firestore...');
                     setData(parsedData);
                   }
                 } catch (e) {
-                  console.warn('[App] Failed to parse old data:', e);
+                  logger.warn('[App] Failed to parse old data:', e);
                 }
               }
             } else {
-              console.log('[App] Firestore document already exists, no migration needed');
+              logger.log('[App] Firestore document already exists, no migration needed');
             }
           }).catch(err => {
-            console.warn('[App] Error checking Firestore document:', err);
+            logger.warn('[App] Error checking Firestore document:', err);
           });
         }
       }
     } catch (err) {
-      console.warn('[App] Error during migration check:', err);
+      logger.warn('[App] Error during migration check:', err);
     }
   }, [user?.uid, db, firebaseError, setData]);
   
@@ -1099,7 +1099,7 @@ function App() {
   // If Firebase is not configured, allow app to work without authentication
   // User will use localStorage only
   if (!auth || firebaseError) {
-    console.warn('[App] Firebase not configured - app will work with localStorage only');
+    // Firebase not configured - app will work with localStorage only (logged via logger in hooks)
   }
   return (
     <ErrorBoundary t={t}>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { onSnapshot, setDoc } from 'firebase/firestore';
 import { db, getPortfolioDoc, firebaseError, setFirestorePermissionError } from '../config/firebase';
+import { logger } from '../utils/logger';
 
 // Helper to get localStorage key for a user
 const getStorageKey = (uid, key) => `pf_${uid}_${key}`;
@@ -22,7 +23,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
         localStorage.setItem(getStorageKey(uid, key), JSON.stringify(value));
       }
     } catch (err) {
-      console.warn(`[PortfolioData] Failed to save to localStorage:`, err);
+      logger.warn(`[PortfolioData] Failed to save to localStorage:`, err);
     }
   }, [key]);
 
@@ -42,7 +43,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
         return JSON.parse(oldStored);
       }
     } catch (err) {
-      console.warn(`[PortfolioData] Failed to load from localStorage:`, err);
+      logger.warn(`[PortfolioData] Failed to load from localStorage:`, err);
     }
     return defaultValue;
   }, [key, defaultValue]);
@@ -50,28 +51,28 @@ export const usePortfolioData = (user, key, defaultValue) => {
   // Save to Firestore
   const saveToFirestore = useCallback(async (value, uid) => {
     if (!db || !uid || firebaseError) {
-      console.warn(`[PortfolioData] Cannot save to Firestore - db: ${!!db}, uid: ${!!uid}, firebaseError: ${!!firebaseError}`);
+      logger.warn(`[PortfolioData] Cannot save to Firestore - db: ${!!db}, uid: ${!!uid}, firebaseError: ${!!firebaseError}`);
       return;
     }
 
     try {
       const docRef = getPortfolioDoc(uid);
       if (!docRef) {
-        console.warn(`[PortfolioData] getPortfolioDoc returned null for uid: ${uid}`);
+        logger.warn(`[PortfolioData] getPortfolioDoc returned null for uid: ${uid}`);
         return;
       }
       
-      console.log(`[PortfolioData] Saving ${key} to Firestore for user ${uid}`);
+      logger.log(`[PortfolioData] Saving ${key} to Firestore for user ${uid}`);
       await setDoc(
         docRef,
         { [key]: value, updatedAt: new Date().toISOString() },
         { merge: true }
       );
-      console.log(`[PortfolioData] Successfully saved ${key} to Firestore`);
+      logger.log(`[PortfolioData] Successfully saved ${key} to Firestore`);
     } catch (err) {
-      console.error(`[PortfolioData] Failed to save to Firestore:`, err);
-      console.error(`[PortfolioData] Error code:`, err.code);
-      console.error(`[PortfolioData] Error message:`, err.message);
+      logger.error(`[PortfolioData] Failed to save to Firestore:`, err);
+      logger.error(`[PortfolioData] Error code:`, err.code);
+      logger.error(`[PortfolioData] Error message:`, err.message);
       
       // Check for permission errors and set global error
       if (err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED' || 
@@ -100,14 +101,14 @@ export const usePortfolioData = (user, key, defaultValue) => {
       unsubscribeRef.current = null;
     }
 
-    console.log(`[PortfolioData] Setting up Firestore listener for ${key}, user: ${user.uid}`);
+    logger.log(`[PortfolioData] Setting up Firestore listener for ${key}, user: ${user.uid}`);
     setLoading(true);
     setError(null);
 
     try {
       // Double-check that db is available before proceeding
       if (!db) {
-        console.warn(`[PortfolioData] db is null, falling back to localStorage for ${key}`);
+        logger.warn(`[PortfolioData] db is null, falling back to localStorage for ${key}`);
         const localData = loadFromLocalStorage(user.uid);
         setData(localData);
         setLoading(false);
@@ -117,7 +118,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
       const docRef = getPortfolioDoc(user.uid);
       if (!docRef) {
         // Fallback to localStorage
-        console.warn(`[PortfolioData] getPortfolioDoc returned null, falling back to localStorage for ${key}`);
+        logger.warn(`[PortfolioData] getPortfolioDoc returned null, falling back to localStorage for ${key}`);
         const localData = loadFromLocalStorage(user.uid);
         setData(localData);
         setLoading(false);
@@ -132,15 +133,15 @@ export const usePortfolioData = (user, key, defaultValue) => {
             if (snapshot.exists()) {
               const firestoreData = snapshot.data();
               const newData = firestoreData[key] !== undefined ? firestoreData[key] : defaultValue;
-              console.log(`[PortfolioData] Received update for ${key} from Firestore`);
+              logger.log(`[PortfolioData] Received update for ${key} from Firestore`);
               setData(newData);
               saveToLocalStorage(newData, user.uid);
               setError(null);
             } else {
               // Document doesn't exist - try loading from localStorage and create doc
-              console.log(`[PortfolioData] Document doesn't exist for ${key}, loading from localStorage`);
+              logger.log(`[PortfolioData] Document doesn't exist for ${key}, loading from localStorage`);
               const localData = loadFromLocalStorage(user.uid);
-              console.log(`[PortfolioData] Loaded from localStorage:`, localData !== defaultValue ? 'has data' : 'default');
+              logger.log(`[PortfolioData] Loaded from localStorage:`, localData !== defaultValue ? 'has data' : 'default');
               setData(localData);
               // Always try to save to Firestore, even if it's default (to create the document)
               // But only if db is still available
@@ -148,14 +149,14 @@ export const usePortfolioData = (user, key, defaultValue) => {
                 saveToFirestore(localData, user.uid).then(() => {
                   console.log(`[PortfolioData] Successfully migrated ${key} to Firestore`);
                 }).catch(err => {
-                  console.warn(`[PortfolioData] Failed to sync local data to Firestore:`, err);
+                  logger.warn(`[PortfolioData] Failed to sync local data to Firestore:`, err);
                   // Permission errors are already handled in saveToFirestore
                 });
               }
             }
             setLoading(false);
           } catch (err) {
-            console.error(`[PortfolioData] Error in snapshot callback for ${key}:`, err);
+            logger.error(`[PortfolioData] Error in snapshot callback for ${key}:`, err);
             setError(err);
             const localData = loadFromLocalStorage(user.uid);
             setData(localData);
@@ -163,7 +164,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
           }
         },
         (err) => {
-          console.error(`[PortfolioData] Firestore listener error for ${key}:`, err);
+          logger.error(`[PortfolioData] Firestore listener error for ${key}:`, err);
           
           // Check for permission errors and set global error
           if (err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED' || 
@@ -177,14 +178,14 @@ export const usePortfolioData = (user, key, defaultValue) => {
             const localData = loadFromLocalStorage(user.uid);
             setData(localData);
           } catch (localErr) {
-            console.error(`[PortfolioData] Failed to load from localStorage:`, localErr);
+            logger.error(`[PortfolioData] Failed to load from localStorage:`, localErr);
             setData(defaultValue);
           }
           setLoading(false);
         }
       );
     } catch (err) {
-      console.error(`[PortfolioData] Failed to set up listener for ${key}:`, err);
+      logger.error(`[PortfolioData] Failed to set up listener for ${key}:`, err);
       
       // Check for permission errors
       if (err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED' || 
@@ -216,7 +217,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
     setData(prevData => {
       const valueToStore = typeof newData === 'function' ? newData(prevData) : newData;
       
-      console.log(`[PortfolioData] updateData called for ${key}, user: ${user?.uid}`);
+      logger.log(`[PortfolioData] updateData called for ${key}, user: ${user?.uid}`);
       
       // Save to localStorage immediately
       if (user?.uid) {
@@ -228,12 +229,12 @@ export const usePortfolioData = (user, key, defaultValue) => {
         saveToFirestore(valueToStore, user.uid).then(() => {
           console.log(`[PortfolioData] Successfully saved ${key} update to Firestore`);
         }).catch(err => {
-          console.error(`[PortfolioData] Failed to save ${key} to Firestore:`, err);
+          logger.error(`[PortfolioData] Failed to save ${key} to Firestore:`, err);
           // Permission errors are already handled in saveToFirestore
           setError(err);
         });
       } else {
-        console.warn(`[PortfolioData] Not saving to Firestore - user: ${!!user?.uid}, db: ${!!db}, firebaseError: ${!!firebaseError}`);
+        logger.warn(`[PortfolioData] Not saving to Firestore - user: ${!!user?.uid}, db: ${!!db}, firebaseError: ${!!firebaseError}`);
       }
 
       return valueToStore;

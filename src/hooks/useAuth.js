@@ -6,6 +6,7 @@ import {
   signOut
 } from 'firebase/auth';
 import { auth, firebaseError } from '../config/firebase';
+import { logger } from '../utils/logger';
 
 export const useAuth = () => {
   const [user, setUser] = useState(null);
@@ -14,7 +15,7 @@ export const useAuth = () => {
   useEffect(() => {
     // If Firebase failed to initialize, set loading to false immediately
     if (firebaseError || !auth) {
-      console.error('[Auth] Firebase not initialized:', firebaseError?.message);
+      logger.error('[Auth] Firebase not initialized:', firebaseError?.message);
       setLoading(false);
       return;
     }
@@ -26,9 +27,9 @@ export const useAuth = () => {
       auth,
       (authUser) => {
         if (authUser) {
-          console.log('[Auth] User logged in:', authUser.uid, authUser.email || 'no email');
+          logger.log('[Auth] User logged in:', authUser.uid, authUser.email || 'no email');
         } else {
-          console.log('[Auth] No user (showing login screen)');
+          logger.log('[Auth] No user (showing login screen)');
         }
         
         if (isMounted) {
@@ -37,7 +38,7 @@ export const useAuth = () => {
         }
       },
       (error) => {
-        console.error('Auth state change error:', error.code, error.message);
+        logger.error('Auth state change error:', error.code, error.message);
         if (isMounted) {
           setUser(null);
           setLoading(false);
@@ -58,10 +59,10 @@ export const useAuth = () => {
     }
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      console.log('Auth: user registered', userCredential.user.uid, userCredential.user.email);
+      logger.log('Auth: user registered', userCredential.user.uid, userCredential.user.email);
       return { success: true, user: userCredential.user };
     } catch (error) {
-      console.error('Auth: registration error', error.code, error.message);
+      logger.error('Auth: registration error', error.code, error.message);
       return { success: false, error: error.message, code: error.code };
     }
   };
@@ -73,10 +74,10 @@ export const useAuth = () => {
     }
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      console.log('Auth: user logged in', userCredential.user.uid, userCredential.user.email);
+      logger.log('Auth: user logged in', userCredential.user.uid, userCredential.user.email);
       return { success: true, user: userCredential.user };
     } catch (error) {
-      console.error('Auth: login error', error.code, error.message);
+      logger.error('Auth: login error', error.code, error.message);
       return { success: false, error: error.message, code: error.code };
     }
   };
@@ -88,10 +89,10 @@ export const useAuth = () => {
     }
     try {
       await signOut(auth);
-      console.log('Auth: user logged out');
+      logger.log('Auth: user logged out');
       return { success: true };
     } catch (error) {
-      console.error('Auth: logout error', error.code, error.message);
+      logger.error('Auth: logout error', error.code, error.message);
       return { success: false, error: error.message };
     }
   };
