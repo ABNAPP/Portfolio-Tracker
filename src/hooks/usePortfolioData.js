@@ -98,58 +98,89 @@ export const usePortfolioData = (user, key, defaultValue) => {
     setError(null);
 
     try {
-      const docRef = getPortfolioDoc(user.uid);
-      if (!docRef) {
-        // Fallback to localStorage
+      // Double-check that db is available before proceeding
+      if (!db) {
+        console.warn(`[PortfolioData] db is null, falling back to localStorage for ${key}`);
         const localData = loadFromLocalStorage(user.uid);
         setData(localData);
         setLoading(false);
         return;
       }
 
-      // Set up real-time listener
+      const docRef = getPortfolioDoc(user.uid);
+      if (!docRef) {
+        // Fallback to localStorage
+        console.warn(`[PortfolioData] getPortfolioDoc returned null, falling back to localStorage for ${key}`);
+        const localData = loadFromLocalStorage(user.uid);
+        setData(localData);
+        setLoading(false);
+        return;
+      }
+
+      // Set up real-time listener with error handling
       unsubscribeRef.current = onSnapshot(
         docRef,
         (snapshot) => {
-          if (snapshot.exists()) {
-            const firestoreData = snapshot.data();
-            const newData = firestoreData[key] !== undefined ? firestoreData[key] : defaultValue;
-            console.log(`[PortfolioData] Received update for ${key} from Firestore`);
-            setData(newData);
-            saveToLocalStorage(newData, user.uid);
-            setError(null);
-          } else {
-            // Document doesn't exist - try loading from localStorage and create doc
-            console.log(`[PortfolioData] Document doesn't exist for ${key}, loading from localStorage`);
-            const localData = loadFromLocalStorage(user.uid);
-            console.log(`[PortfolioData] Loaded from localStorage:`, localData !== defaultValue ? 'has data' : 'default');
-            setData(localData);
-            // Always try to save to Firestore, even if it's default (to create the document)
-            saveToFirestore(localData, user.uid).then(() => {
-              console.log(`[PortfolioData] Successfully migrated ${key} to Firestore`);
-            }).catch(err => {
-              console.warn(`[PortfolioData] Failed to sync local data to Firestore:`, err);
-              if (err.code === 'permission-denied') {
-                console.error(`[PortfolioData] PERMISSION DENIED - Check Firestore security rules!`);
+          try {
+            if (snapshot.exists()) {
+              const firestoreData = snapshot.data();
+              const newData = firestoreData[key] !== undefined ? firestoreData[key] : defaultValue;
+              console.log(`[PortfolioData] Received update for ${key} from Firestore`);
+              setData(newData);
+              saveToLocalStorage(newData, user.uid);
+              setError(null);
+            } else {
+              // Document doesn't exist - try loading from localStorage and create doc
+              console.log(`[PortfolioData] Document doesn't exist for ${key}, loading from localStorage`);
+              const localData = loadFromLocalStorage(user.uid);
+              console.log(`[PortfolioData] Loaded from localStorage:`, localData !== defaultValue ? 'has data' : 'default');
+              setData(localData);
+              // Always try to save to Firestore, even if it's default (to create the document)
+              // But only if db is still available
+              if (db) {
+                saveToFirestore(localData, user.uid).then(() => {
+                  console.log(`[PortfolioData] Successfully migrated ${key} to Firestore`);
+                }).catch(err => {
+                  console.warn(`[PortfolioData] Failed to sync local data to Firestore:`, err);
+                  if (err.code === 'permission-denied') {
+                    console.error(`[PortfolioData] PERMISSION DENIED - Check Firestore security rules!`);
+                  }
+                });
               }
-            });
+            }
+            setLoading(false);
+          } catch (err) {
+            console.error(`[PortfolioData] Error in snapshot callback for ${key}:`, err);
+            setError(err);
+            const localData = loadFromLocalStorage(user.uid);
+            setData(localData);
+            setLoading(false);
           }
-          setLoading(false);
         },
         (err) => {
           console.error(`[PortfolioData] Firestore listener error for ${key}:`, err);
           setError(err);
           // Fallback to localStorage on error
-          const localData = loadFromLocalStorage(user.uid);
-          setData(localData);
+          try {
+            const localData = loadFromLocalStorage(user.uid);
+            setData(localData);
+          } catch (localErr) {
+            console.error(`[PortfolioData] Failed to load from localStorage:`, localErr);
+            setData(defaultValue);
+          }
           setLoading(false);
         }
       );
     } catch (err) {
       console.error(`[PortfolioData] Failed to set up listener for ${key}:`, err);
       setError(err);
-      const localData = loadFromLocalStorage(user.uid);
-      setData(localData);
+      try {
+        const localData = loadFromLocalStorage(user.uid);
+        setData(localData);
+      } catch (localErr) {
+        console.error(`[PortfolioData] Failed to load from localStorage:`, localErr);
+        setData(defaultValue);
+      }
       setLoading(false);
     }
 
