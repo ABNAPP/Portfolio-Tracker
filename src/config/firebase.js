@@ -1,17 +1,18 @@
 import { initializeApp, getApps } from 'firebase/app';
+import { getAnalytics, isSupported } from 'firebase/analytics';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 // Firebase Configuration
-// Uses environment variables with VITE_ prefix
+// Uses environment variables with VITE_ prefix, with fallback to default config
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBcklKADSt7jclx9TfekSuHJH_797FikME",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "portfolio-tracker-771a9.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "portfolio-tracker-771a9",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "portfolio-tracker-771a9.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "274252523468",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:274252523468:web:2d4d3743789f2e48b75f69",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-6M10S608P1"
 };
 
 // Helper to check if we're in local development
@@ -49,6 +50,7 @@ const validateFirebaseConfig = () => {
 let app = null;
 let auth = null;
 let db = null;
+let analytics = null;
 let firebaseError = null;
 
 try {
@@ -77,6 +79,22 @@ try {
     auth = getAuth(app);
     db = getFirestore(app);
     
+    // Initialize Analytics if supported and measurementId is available
+    if (typeof window !== 'undefined') {
+      isSupported().then((supported) => {
+        if (supported && firebaseConfig.measurementId) {
+          try {
+            analytics = getAnalytics(app);
+            console.log('[Firebase] Analytics initialized');
+          } catch (error) {
+            console.warn('[Firebase] Analytics initialization failed:', error);
+          }
+        } else {
+          console.log('[Firebase] Analytics not supported or measurementId not provided');
+        }
+      });
+    }
+    
     const isDev = isLocalDev();
     console.log(`[Firebase] ${isDev ? 'LOCAL DEV' : 'PRODUCTION'} - Auth and Firestore initialized`);
   }
@@ -86,5 +104,5 @@ try {
   console.error('[Firebase] Error details:', error.message);
 }
 
-export { app, auth, db, firebaseError };
+export { app, auth, db, analytics, firebaseError };
 
