@@ -104,14 +104,28 @@ function App() {
   const [fx, setFx] = useLocalStorage('pf_fx_rates_v24', DEFAULT_FX_RATES);
   const [baseCurr, setBaseCurr] = useLocalStorage('base_curr', 'SEK');
   
-  // API Keys
-  const [apiKeys, setApiKeys] = useLocalStorage('pf_api_keys', {
-    eodhd: '',
-    marketstack: '',
-    finnhub: '',
-    alphaVantage: '',
+  // API Keys - Read from localStorage, fallback to environment variables
+  const getApiKeysFromEnv = () => ({
+    eodhd: import.meta.env.VITE_EODHD_API_KEY || '',
+    marketstack: import.meta.env.VITE_MARKETSTACK_API_KEY || '',
+    finnhub: import.meta.env.VITE_FINNHUB_API_KEY || '',
+    alphaVantage: import.meta.env.VITE_ALPHAVANTAGE_API_KEY || '',
     extra: ''
   });
+
+  const [apiKeys, setApiKeys] = useLocalStorage('pf_api_keys', getApiKeysFromEnv());
+  
+  // Merge environment variables with localStorage (env vars take precedence if set)
+  const effectiveApiKeys = useMemo(() => {
+    const envKeys = getApiKeysFromEnv();
+    return {
+      eodhd: envKeys.eodhd || apiKeys.eodhd,
+      marketstack: envKeys.marketstack || apiKeys.marketstack,
+      finnhub: envKeys.finnhub || apiKeys.finnhub,
+      alphaVantage: envKeys.alphaVantage || apiKeys.alphaVantage,
+      extra: apiKeys.extra || ''
+    };
+  }, [apiKeys]);
   
   // Hooks
   const { showNotification, hideNotification, NotificationComponent } = useNotification();
@@ -139,7 +153,7 @@ function App() {
   
   // Fetch benchmark data when showBenchmark is enabled
   useEffect(() => {
-    if (showBenchmark && selectedBenchmark && apiKeys) {
+    if (showBenchmark && selectedBenchmark && effectiveApiKeys) {
       const stored = benchmarkData[selectedBenchmark];
       // Only fetch if we don't have recent data (older than 1 day)
       const shouldFetch = !stored?.data || 
@@ -147,10 +161,10 @@ function App() {
         (new Date() - new Date(stored.lastFetched)) > 24 * 60 * 60 * 1000;
       
       if (shouldFetch) {
-        fetchBenchmarkData(selectedBenchmark, apiKeys);
+        fetchBenchmarkData(selectedBenchmark, effectiveApiKeys);
       }
     }
-  }, [showBenchmark, selectedBenchmark, apiKeys, benchmarkData, fetchBenchmarkData]);
+  }, [showBenchmark, selectedBenchmark, effectiveApiKeys, benchmarkData, fetchBenchmarkData]);
   
   // Generate initial chart data if empty
   useEffect(() => {
@@ -651,21 +665,21 @@ function App() {
 
   // Update all prices
   const handleUpdateAll = useCallback(async () => {
-    if (!apiKeys.finnhub && !apiKeys.eodhd) {
+    if (!effectiveApiKeys.finnhub && !effectiveApiKeys.eodhd) {
       showNotification('Lägg till API-nycklar i inställningarna', 'warning');
       return;
     }
-    await updateAllPrices(data.holdings, apiKeys, updatePrice);
+    await updateAllPrices(data.holdings, effectiveApiKeys, updatePrice);
     showNotification('Kurser uppdaterade!', 'success');
-  }, [data.holdings, apiKeys, updatePrice, updateAllPrices, showNotification]);
+  }, [data.holdings, effectiveApiKeys, updatePrice, updateAllPrices, showNotification]);
 
   // Search handler
   const handleSearch = useCallback(async (query) => {
     setIsSearching(true);
-    const results = await searchSymbols(query, apiKeys.finnhub);
+    const results = await searchSymbols(query, effectiveApiKeys.finnhub);
     setSearchResults(results);
     setIsSearching(false);
-  }, [apiKeys.finnhub, searchSymbols]);
+  }, [effectiveApiKeys.finnhub, searchSymbols]);
 
   // Select search result
   const handleSelectResult = useCallback(async (result) => {
@@ -696,8 +710,8 @@ function App() {
     
     // Fetch price and beta
     const [price, beta] = await Promise.all([
-      getPrice(result.symbol, apiKeys),
-      getBeta(result.symbol, apiKeys)
+      getPrice(result.symbol, effectiveApiKeys),
+      getBeta(result.symbol, effectiveApiKeys)
     ]);
     
     setForm(prev => ({
@@ -706,7 +720,7 @@ function App() {
       currentPrice: price || '',
       beta: beta || (Math.random() * 0.5 + 0.8).toFixed(2)
     }));
-  }, [fx, apiKeys, getPrice, getBeta]);
+  }, [fx, effectiveApiKeys, getPrice, getBeta]);
 
   // Save holding
   const handleSave = useCallback((e) => {
@@ -951,12 +965,12 @@ function App() {
         lang,
         baseCurr,
         fx,
-        apiKeys
+        apiKeys: effectiveApiKeys
       }
     };
     exportBackupJSON(backupData);
     showNotification('Backup sparad!', 'success');
-  }, [data, transactions, chartData, historyProfiles, theme, lang, baseCurr, fx, apiKeys, showNotification]);
+  }, [data, transactions, chartData, historyProfiles, theme, lang, baseCurr, fx, effectiveApiKeys, showNotification]);
 
   const handleRestore = useCallback(async (e) => {
     const file = e.target.files?.[0];

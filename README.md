@@ -85,14 +85,45 @@ git push -u origin main
    - Bygga projektet med `npm run build`
    - Deploya till produktion
 
-### Steg 3: Konfiguration (valfritt)
+### Steg 3: Konfigurera API-nycklar (rekommenderas)
+
+Du kan konfigurera API-nycklar på två sätt:
+
+#### Alternativ 1: Environment Variables i Vercel (Rekommenderas)
+
+1. Gå till ditt projekt i Vercel Dashboard
+2. Klicka på **Settings** → **Environment Variables**
+3. Lägg till följande variabler med prefixet `VITE_`:
+
+```
+VITE_FINNHUB_API_KEY=din_finnhub_nyckel
+VITE_EODHD_API_KEY=din_eodhd_nyckel
+VITE_ALPHAVANTAGE_API_KEY=din_alphavantage_nyckel
+VITE_MARKETSTACK_API_KEY=din_marketstack_nyckel
+```
+
+4. Välj miljö: **Production**, **Preview**, och/eller **Development**
+5. Klicka på **Save**
+6. **Redeploy** projektet för att applicera ändringarna
+
+**Viktigt:** 
+- Variablerna måste ha prefixet `VITE_` för att vara tillgängliga i klient-koden
+- Efter att ha lagt till variabler måste du redeploya projektet
+
+#### Alternativ 2: Via appens inställningar
+
+Du kan också lägga till API-nycklar direkt i appen under **Inställningar**-fliken. Dessa sparas i localStorage och fungerar både lokalt och i produktion.
+
+**Prioritering:**
+- Environment variables (Vercel) har högst prioritet
+- Om en env var är satt används den, annars används värdet från localStorage
+
+### Steg 4: Automatisk konfiguration
 
 Vercel kommer automatiskt att:
 - ✅ Detektera build-kommandot från `package.json`
 - ✅ Använda output-mappen `dist/`
 - ✅ Konfigurera SPA-routing via `vercel.json`
-
-**Inga miljövariabler behövs** - API-nycklar hanteras via localStorage i appen.
 
 ### Efter deployment
 
@@ -138,10 +169,27 @@ portfolio-tracker/
 För att hämta live-kurser behöver du API-nycklar från:
 
 1. **EODHD** (Rekommenderas) - [eodhd.com](https://eodhd.com)
-2. **Finnhub** - [finnhub.io](https://finnhub.io)
+2. **Finnhub** - [finnhub.io](https://finnhub.io) - **Krävs för sökfunktionen**
 3. **Alpha Vantage** - [alphavantage.co](https://www.alphavantage.co)
+4. **Marketstack** - [marketstack.com](https://marketstack.com)
 
-Lägg till nycklarna under Inställningar i appen.
+### Konfigurera API-nycklar
+
+#### I Vercel (Produktion)
+
+Lägg till environment variables i Vercel Dashboard:
+- `VITE_FINNHUB_API_KEY` - **Krävs för sökfunktionen**
+- `VITE_EODHD_API_KEY`
+- `VITE_ALPHAVANTAGE_API_KEY`
+- `VITE_MARKETSTACK_API_KEY`
+
+**Viktigt:** Variablerna måste ha prefixet `VITE_` för att vara tillgängliga i klient-koden.
+
+#### Lokalt eller via appen
+
+Du kan också lägga till API-nycklar direkt i appen under **Inställningar**-fliken. Dessa sparas i localStorage.
+
+**Prioritering:** Environment variables (Vercel) har högst prioritet. Om en env var är satt används den, annars används värdet från localStorage.
 
 ## 🌟 Förbättringar i V2.0
 
