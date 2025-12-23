@@ -5,13 +5,20 @@ import {
   signInWithEmailAndPassword,
   signOut
 } from 'firebase/auth';
-import { auth } from '../config/firebase';
+import { auth, firebaseError } from '../config/firebase';
 
 export const useAuth = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // If Firebase failed to initialize, set loading to false immediately
+    if (firebaseError || !auth) {
+      console.error('[Auth] Firebase not initialized:', firebaseError?.message);
+      setLoading(false);
+      return;
+    }
+
     let isMounted = true;
 
     // Set up auth state listener
@@ -46,6 +53,9 @@ export const useAuth = () => {
 
   // Register new user with email and password
   const register = async (email, password) => {
+    if (!auth || firebaseError) {
+      return { success: false, error: 'Firebase is not configured. Please check environment variables.', code: 'firebase/not-initialized' };
+    }
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       console.log('Auth: user registered', userCredential.user.uid, userCredential.user.email);
@@ -58,6 +68,9 @@ export const useAuth = () => {
 
   // Login with email and password
   const login = async (email, password) => {
+    if (!auth || firebaseError) {
+      return { success: false, error: 'Firebase is not configured. Please check environment variables.', code: 'firebase/not-initialized' };
+    }
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       console.log('Auth: user logged in', userCredential.user.uid, userCredential.user.email);
@@ -70,6 +83,9 @@ export const useAuth = () => {
 
   // Logout current user
   const logout = async () => {
+    if (!auth || firebaseError) {
+      return { success: false, error: 'Firebase is not configured.' };
+    }
     try {
       await signOut(auth);
       console.log('Auth: user logged out');
@@ -80,6 +96,6 @@ export const useAuth = () => {
     }
   };
 
-  return { user, loading, register, login, logout };
+  return { user, loading, register, login, logout, firebaseError };
 };
 

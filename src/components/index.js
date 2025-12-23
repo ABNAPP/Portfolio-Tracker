@@ -15,5 +15,6 @@ export { default as DashboardCards } from './DashboardCards';
 
 // Auth Components
 export { AuthScreen } from './AuthScreen';
+export { FirebaseConfigError } from './FirebaseConfigError';
 
 

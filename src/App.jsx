@@ -15,9 +15,11 @@ import {
   DonutChart,
   DividendBarChart,
   Heatmap,
-  AuthScreen
+  AuthScreen,
+  FirebaseConfigError
 } from './components';
 import { useLocalStorage, useApi, useBenchmark, useAuth } from './hooks';
+import { firebaseError } from './config/firebase';
 import { TRANSLATIONS } from './utils/translations';
 import { 
   CURRENCIES, 
@@ -129,7 +131,7 @@ function App() {
   }, [apiKeys]);
   
   // Auth
-  const { user, loading: authLoading, login, register, logout } = useAuth();
+  const { user, loading: authLoading, login, register, logout, firebaseError: authFirebaseError } = useAuth();
   
   // Hooks
   const { showNotification, hideNotification, NotificationComponent } = useNotification();
@@ -1015,6 +1017,11 @@ function App() {
       ? 'bg-slate-750 border-slate-600 text-white focus:border-blue-500'
       : 'bg-white border-slate-300 text-slate-900 focus:border-blue-500'
   }`;
+
+  // Show Firebase configuration error if Firebase failed to initialize
+  if (firebaseError || authFirebaseError) {
+    return <FirebaseConfigError error={firebaseError || authFirebaseError} />;
+  }
 
   // Show loading spinner while checking auth
   if (authLoading) {

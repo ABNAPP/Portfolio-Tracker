@@ -29,29 +29,62 @@ export const isLocalDev = () => {
   return false;
 };
 
-// Initialize Firebase - ensure we only initialize once
-let app, auth, db;
-
-try {
-  const existingApps = getApps();
+// Validate Firebase configuration
+const validateFirebaseConfig = () => {
+  const required = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'];
+  const missing = required.filter(key => !firebaseConfig[key]);
   
-  if (existingApps.length > 0) {
-    app = existingApps[0];
-    console.log('[Firebase] Reusing existing Firebase app');
-  } else {
-    app = initializeApp(firebaseConfig);
-    console.log('[Firebase] ✅ Initialized');
+  if (missing.length > 0) {
+    return {
+      valid: false,
+      missing,
+      message: `Firebase configuration is missing: ${missing.join(', ')}. Please add environment variables in Vercel.`
+    };
   }
   
-  auth = getAuth(app);
-  db = getFirestore(app);
+  return { valid: true };
+};
+
+// Initialize Firebase - ensure we only initialize once
+let app = null;
+let auth = null;
+let db = null;
+let firebaseError = null;
+
+try {
+  // Validate configuration first
+  const validation = validateFirebaseConfig();
   
-  const isDev = isLocalDev();
-  console.log(`[Firebase] ${isDev ? 'LOCAL DEV' : 'PRODUCTION'} - Auth and Firestore initialized`);
+  if (!validation.valid) {
+    firebaseError = new Error(validation.message);
+    console.error('[Firebase] Configuration error:', validation.message);
+    console.error('[Firebase] Missing variables:', validation.missing);
+    console.error('[Firebase] Please add the following environment variables in Vercel:');
+    validation.missing.forEach(key => {
+      console.error(`  - VITE_FIREBASE_${key.toUpperCase().replace(/([A-Z])/g, '_$1')}`);
+    });
+  } else {
+    const existingApps = getApps();
+    
+    if (existingApps.length > 0) {
+      app = existingApps[0];
+      console.log('[Firebase] Reusing existing Firebase app');
+    } else {
+      app = initializeApp(firebaseConfig);
+      console.log('[Firebase] ✅ Initialized');
+    }
+    
+    auth = getAuth(app);
+    db = getFirestore(app);
+    
+    const isDev = isLocalDev();
+    console.log(`[Firebase] ${isDev ? 'LOCAL DEV' : 'PRODUCTION'} - Auth and Firestore initialized`);
+  }
 } catch (error) {
+  firebaseError = error;
   console.error('[Firebase] Error initializing Firebase:', error);
-  throw error;
+  console.error('[Firebase] Error details:', error.message);
 }
 
-export { app, auth, db };
+export { app, auth, db, firebaseError };
 
