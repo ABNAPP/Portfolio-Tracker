@@ -49,9 +49,14 @@ const validateFirebaseConfig = () => {
 // Initialize Firebase - ensure we only initialize once
 let app = null;
 let auth = null;
-let db = null;
+let db = null; // Will be initialized below
 let analytics = null;
 let firebaseError = null;
+
+// Ensure db is always defined (even if null) to avoid "db is not defined" errors
+if (typeof db === 'undefined') {
+  db = null;
+}
 
 try {
   // Validate configuration first
@@ -107,23 +112,56 @@ try {
 export { app, auth, db, analytics, firebaseError };
 
 // Helper functions for Firestore paths
+// These functions check if db is available before using it
 export const getPortfolioDoc = (uid) => {
-  if (!db || !uid) return null;
-  return doc(db, 'users', uid, 'portfolio', 'data');
+  if (!db || !uid) {
+    console.warn('[Firebase] getPortfolioDoc: db not initialized or uid missing');
+    return null;
+  }
+  try {
+    return doc(db, 'users', uid, 'portfolio', 'data');
+  } catch (err) {
+    console.error('[Firebase] getPortfolioDoc error:', err);
+    return null;
+  }
 };
 
 export const getTransactionsCollection = (uid) => {
-  if (!db || !uid) return null;
-  return collection(db, 'users', uid, 'transactions');
+  if (!db || !uid) {
+    console.warn('[Firebase] getTransactionsCollection: db not initialized or uid missing');
+    return null;
+  }
+  try {
+    return collection(db, 'users', uid, 'transactions');
+  } catch (err) {
+    console.error('[Firebase] getTransactionsCollection error:', err);
+    return null;
+  }
 };
 
 export const getChartDataCollection = (uid) => {
-  if (!db || !uid) return null;
-  return collection(db, 'users', uid, 'chartData');
+  if (!db || !uid) {
+    console.warn('[Firebase] getChartDataCollection: db not initialized or uid missing');
+    return null;
+  }
+  try {
+    return collection(db, 'users', uid, 'chartData');
+  } catch (err) {
+    console.error('[Firebase] getChartDataCollection error:', err);
+    return null;
+  }
 };
 
 export const getHistoryProfilesCollection = (uid) => {
-  if (!db || !uid) return null;
-  return collection(db, 'users', uid, 'historyProfiles');
+  if (!db || !uid) {
+    console.warn('[Firebase] getHistoryProfilesCollection: db not initialized or uid missing');
+    return null;
+  }
+  try {
+    return collection(db, 'users', uid, 'historyProfiles');
+  } catch (err) {
+    console.error('[Firebase] getHistoryProfilesCollection error:', err);
+    return null;
+  }
 };
 
