@@ -244,19 +244,24 @@ export const usePortfolioData = (user, key, defaultValue) => {
 
   // Update function that saves to Firestore
   const updateData = useCallback((newData) => {
+    const currentUid = user?.uid;
+    logger.log(`[PortfolioData] updateData called for ${key}, user: ${currentUid || 'logged out'}`);
+
+    // Update local state optimistically
     setData(prevData => {
       const valueToStore = typeof newData === 'function' ? newData(prevData) : newData;
-      const currentUid = user?.uid;
       
-      logger.log(`[PortfolioData] updateData called for ${key}, user: ${currentUid || 'logged out'}`);
-
-      // Save to Firestore if user is logged in
+      // Save to Firestore if user is logged in (fire and forget, but log errors)
       if (currentUid && db && !firebaseError) {
+        // Use setDoc with merge to ensure data is persisted
         saveToFirestore(valueToStore, currentUid).then(() => {
           logger.log(`[PortfolioData] ✅ Successfully saved ${key} update to Firestore`);
+          // onSnapshot will confirm the update, ensuring consistency
         }).catch(err => {
           logger.error(`[PortfolioData] ❌ Failed to save ${key} to Firestore:`, err);
+          logger.error(`[PortfolioData] - Error details:`, err);
           setError(err);
+          // Note: onSnapshot will eventually sync the correct state from Firestore
         });
       } else {
         logger.warn(`[PortfolioData] Cannot save ${key} - user not logged in or Firebase not available`);
