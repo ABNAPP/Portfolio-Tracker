@@ -116,9 +116,12 @@ function App() {
   // Data State - Use Firestore for syncing, fallback to localStorage
   // Only use Firestore if user is logged in and Firebase is properly configured
   const userForPortfolioData = user && !firebaseError ? user : null;
-  const [data, setData] = usePortfolioData(userForPortfolioData, 'data', DEFAULT_DATA);
-  const [fx, setFx] = usePortfolioData(userForPortfolioData, 'fx', DEFAULT_FX_RATES);
-  const [baseCurr, setBaseCurr] = usePortfolioData(userForPortfolioData, 'baseCurr', 'SEK');
+  const [data, setData, dataLoading, dataError] = usePortfolioData(userForPortfolioData, 'data', DEFAULT_DATA);
+  const [fx, setFx, fxLoading, fxError] = usePortfolioData(userForPortfolioData, 'fx', DEFAULT_FX_RATES);
+  const [baseCurr, setBaseCurr, baseCurrLoading, baseCurrError] = usePortfolioData(userForPortfolioData, 'baseCurr', 'SEK');
+  
+  // Combined loading state - true if any portfolio data is loading
+  const portfolioLoading = dataLoading || fxLoading || baseCurrLoading;
   
   // Collections (transactions, chartData, historyProfiles) - still using localStorage for now
   // TODO: Implement Firestore collections for these
@@ -1156,6 +1159,16 @@ function App() {
         
         {/* Main Content */}
         <div className="max-w-7xl mx-auto p-4 space-y-6 animate-fade-in">
+          {/* Loading indicator when portfolio data is loading from Firestore */}
+          {portfolioLoading && user && (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 flex items-center gap-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-2 border-blue-500 border-t-transparent"></div>
+              <span className="text-blue-700 dark:text-blue-300 font-medium">
+                Laddar portfölj från molnet...
+              </span>
+            </div>
+          )}
+          
           {/* Dashboard Cards */}
           <DashboardCards
             stats={stats}

@@ -52,13 +52,29 @@ const getPortfolioDocPath = (uid) => {
  * - When user is logged in: Firestore is source-of-truth (read via onSnapshot)
  * - When user is logged out: localStorage is source-of-truth (old format without uid)
  * - Firestore path: users/{uid}/portfolio/data (matches Firestore rules)
+ * - During loading: preserve last known data (don't reset to empty)
  */
 export const usePortfolioData = (user, key, defaultValue) => {
-  const [data, setData] = useState(defaultValue);
+  // Initialize state from localStorage to preserve data during loading
+  const [data, setData] = useState(() => {
+    // Try to load from localStorage on initial mount
+    try {
+      const oldKey = key.includes('_v') ? key : `pf_${key}_v24`;
+      const oldStored = localStorage.getItem(oldKey);
+      if (oldStored) {
+        return JSON.parse(oldStored);
+      }
+    } catch (err) {
+      // Ignore errors on initial load
+    }
+    return defaultValue;
+  });
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const unsubscribeRef = useRef(null);
   const previousUidRef = useRef(null); // Track previous UID to detect changes
+  const isInitialMountRef = useRef(true); // Track if this is the first mount
 
   // Save to localStorage as backup (only when user is logged in)
   const saveToLocalStorage = useCallback((value, uid) => {
@@ -176,6 +192,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
       }
       
       previousUidRef.current = currentUid;
+      isInitialMountRef.current = false;
       return;
     }
 
@@ -194,9 +211,22 @@ export const usePortfolioData = (user, key, defaultValue) => {
       setData(localData);
       setLoading(false);
       previousUidRef.current = currentUid;
+      isInitialMountRef.current = false;
       return;
     }
 
+    // CRITICAL: Preserve current data when user logs in (before first snapshot)
+    // This prevents UI from going blank during loading
+    if (isInitialMountRef.current || previousUidRef.current !== currentUid) {
+      logger.log(`[PortfolioData] 🔄 User logged in or UID changed - preserving current data during loading`);
+      const preservedData = loadFromLocalStorage(currentUid);
+      if (preservedData !== defaultValue) {
+        logger.log(`[PortfolioData] - Preserving data from localStorage to prevent blank UI`);
+        setData(preservedData);
+      }
+    }
+
+    // Set loading state - but DON'T reset data
     setLoading(true);
     setError(null);
 
@@ -204,6 +234,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
     logger.log(`[PortfolioData] 📡 Setting up onSnapshot listener for ${key}`);
     logger.log(`[PortfolioData] - Reading from: ${path}`);
     logger.log(`[PortfolioData] - Using same docRef as WRITE operations`);
+    logger.log(`[PortfolioData] - Current data preserved, waiting for first snapshot...`);
 
     unsubscribeRef.current = onSnapshot(
       docRef,
@@ -250,7 +281,9 @@ export const usePortfolioData = (user, key, defaultValue) => {
             setError(null);
           }
           
+          // First snapshot received - loading is complete
           setLoading(false);
+          isInitialMountRef.current = false;
         } catch (err) {
           logger.error(`[PortfolioData] ❌ Error in onSnapshot callback for ${key}:`, err);
           setError(err);
@@ -258,6 +291,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
           const localData = loadFromLocalStorage(currentUid);
           setData(localData);
           setLoading(false);
+          isInitialMountRef.current = false;
         }
       },
       (err) => {
@@ -281,6 +315,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
           // Keep current state on localStorage error
         }
         setLoading(false);
+        isInitialMountRef.current = false;
       }
     );
 
