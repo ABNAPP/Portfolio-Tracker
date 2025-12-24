@@ -1,17 +1,18 @@
 import { useState, useCallback, useEffect } from 'react';
 import { MARKET_INDICES } from '../utils/constants';
-import { useLocalStorage } from './useLocalStorage';
+import { usePortfolioData } from './usePortfolioData';
 
 /**
  * Hook for fetching and managing benchmark/index data
  * 
  * Uses multiple APIs to fetch historical index data for comparison
+ * Stores data in Firestore via usePortfolioData
  */
-export function useBenchmark() {
-  const [benchmarkData, setBenchmarkData] = useLocalStorage('pf_benchmark_data_v2', {});
-  const [selectedBenchmark, setSelectedBenchmark] = useLocalStorage('pf_selected_benchmark', 'OMXS30');
+export function useBenchmark(user) {
+  const [benchmarkData, setBenchmarkData] = usePortfolioData(user, 'benchmarkData', {});
+  const [selectedBenchmark, setSelectedBenchmark] = usePortfolioData(user, 'selectedBenchmark', 'OMXS30');
   const [isLoading, setIsLoading] = useState(false);
-  const [lastUpdate, setLastUpdate] = useLocalStorage('pf_benchmark_last_update', null);
+  const [lastUpdate, setLastUpdate] = usePortfolioData(user, 'benchmarkLastUpdate', null);
   
   /**
    * Fetch historical data from Alpha Vantage

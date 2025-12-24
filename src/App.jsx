@@ -28,7 +28,7 @@ const ModalLoader = () => (
     <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
   </div>
 );
-import { useLocalStorage, useApi, useBenchmark, useAuth, usePortfolioData } from './hooks';
+import { useApi, useBenchmark, useAuth, usePortfolioData } from './hooks';
 import { db, auth, firebaseError, getFirebaseError } from './config/firebase';
 import { logger } from './utils/logger';
 import { TRANSLATIONS } from './utils/translations';
@@ -66,9 +66,15 @@ const DEFAULT_FORM = {
 };
 
 function App() {
-  // Theme & Language
-  const [theme, setTheme] = useLocalStorage('theme', 'light');
-  const [lang, setLang] = useLocalStorage('lang', 'sv');
+  // Auth
+  const { user, loading: authLoading, login, register, logout } = useAuth();
+  
+  // User must be logged in for Firestore access
+  const userForPortfolioData = user && !firebaseError ? user : null;
+  
+  // Theme & Language - stored in Firestore
+  const [theme, setTheme] = usePortfolioData(userForPortfolioData, 'theme', 'light');
+  const [lang, setLang] = usePortfolioData(userForPortfolioData, 'lang', 'sv');
   const t = TRANSLATIONS[lang] || TRANSLATIONS.sv;
   
   // UI State
@@ -87,8 +93,8 @@ function App() {
     }
   }, [tab]);
   
-  // Stress Test State
-  const [slrRate, setSlrRate] = useLocalStorage('pf_slr_rate', 2.62); // Statslåneränta
+  // Stress Test State - stored in Firestore
+  const [slrRate, setSlrRate] = usePortfolioData(userForPortfolioData, 'slrRate', 2.62); // Statslåneränta
   const [stressIndex, setStressIndex] = useState('OMXS30');
   const [stressIndexChange, setStressIndexChange] = useState(-20);
   const [stressFxFrom, setStressFxFrom] = useState('SEK');
@@ -110,24 +116,15 @@ function App() {
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   
-  // Auth
-  const { user, loading: authLoading, login, register, logout } = useAuth();
+  // Data State - Use Firestore only (stored in portfolio/data document)
+  const [data, setData] = usePortfolioData(userForPortfolioData, 'data', DEFAULT_DATA);
+  const [fx, setFx] = usePortfolioData(userForPortfolioData, 'fx', DEFAULT_FX_RATES);
+  const [baseCurr, setBaseCurr] = usePortfolioData(userForPortfolioData, 'baseCurr', 'SEK');
   
-  // Data State - Use Firestore for syncing, fallback to localStorage
-  // Only use Firestore if user is logged in and Firebase is properly configured
-  const userForPortfolioData = user && !firebaseError ? user : null;
-  const [data, setData, dataLoading, dataError] = usePortfolioData(userForPortfolioData, 'data', DEFAULT_DATA);
-  const [fx, setFx, fxLoading, fxError] = usePortfolioData(userForPortfolioData, 'fx', DEFAULT_FX_RATES);
-  const [baseCurr, setBaseCurr, baseCurrLoading, baseCurrError] = usePortfolioData(userForPortfolioData, 'baseCurr', 'SEK');
-  
-  // Combined loading state - true if any portfolio data is loading
-  const portfolioLoading = dataLoading || fxLoading || baseCurrLoading;
-  
-  // Collections (transactions, chartData, historyProfiles) - still using localStorage for now
-  // TODO: Implement Firestore collections for these
-  const [transactions, setTransactions] = useLocalStorage('pf_trans_v24', []);
-  const [chartData, setChartData] = useLocalStorage('pf_chart_v24', []);
-  const [historyProfiles, setHistoryProfiles] = useLocalStorage('pf_hist_v25', []);
+  // Collections - stored as arrays in Firestore portfolio document
+  const [transactions, setTransactions] = usePortfolioData(userForPortfolioData, 'transactions', []);
+  const [chartData, setChartData] = usePortfolioData(userForPortfolioData, 'chartData', []);
+  const [historyProfiles, setHistoryProfiles] = usePortfolioData(userForPortfolioData, 'historyProfiles', []);
   
   // API Keys - Read only from environment variables
   const effectiveApiKeys = useMemo(() => ({
@@ -140,7 +137,7 @@ function App() {
   // Hooks
   const { showNotification, hideNotification, NotificationComponent } = useNotification();
   const { status: apiStatus, getPrice, searchSymbols, getBeta, fetchFxRates, updateAllPrices } = useApi();
-  const { benchmarkData, selectedBenchmark, setSelectedBenchmark, fetchBenchmarkData, alignWithPortfolio, generateSimulatedData } = useBenchmark();
+  const { benchmarkData, selectedBenchmark, setSelectedBenchmark, fetchBenchmarkData, alignWithPortfolio, generateSimulatedData } = useBenchmark(userForPortfolioData);
   
   // Refs
   const fileRef = useRef(null);
@@ -1048,9 +1045,9 @@ function App() {
   }
   
   // If Firebase is not configured, allow app to work without authentication
-  // User will use localStorage only
+  // User must be logged in to use Firestore
   if (!auth || firebaseError) {
-    // Firebase not configured - app will work with localStorage only (logged via logger in hooks)
+    // Firebase not configured - user must be logged in with Firebase configured to use the app
   }
   return (
     <ErrorBoundary t={t}>
@@ -1159,16 +1156,6 @@ function App() {
         
         {/* Main Content */}
         <div className="max-w-7xl mx-auto p-4 space-y-6 animate-fade-in">
-          {/* Loading indicator when portfolio data is loading from Firestore */}
-          {portfolioLoading && user && (
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 flex items-center gap-3">
-              <div className="animate-spin rounded-full h-5 w-5 border-2 border-blue-500 border-t-transparent"></div>
-              <span className="text-blue-700 dark:text-blue-300 font-medium">
-                Laddar portfölj från molnet...
-              </span>
-            </div>
-          )}
-          
           {/* Dashboard Cards */}
           <DashboardCards
             stats={stats}

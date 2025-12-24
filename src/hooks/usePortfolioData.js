@@ -3,9 +3,6 @@ import { onSnapshot, setDoc, doc } from 'firebase/firestore';
 import { db, firebaseError, setFirestorePermissionError } from '../config/firebase';
 import { logger } from '../utils/logger';
 
-// Helper to get localStorage key for a user
-const getStorageKey = (uid, key) => `pf_${uid}_${key}`;
-
 /**
  * SINGLE SOURCE OF TRUTH for Firestore document reference
  * Used for ALL operations: getDoc, onSnapshot, setDoc, updateDoc
@@ -49,81 +46,29 @@ const getPortfolioDocPath = (uid) => {
  * Hook for syncing portfolio data with Firestore
  * 
  * RULES:
- * - When user is logged in: Firestore is source-of-truth (read via onSnapshot)
- * - When user is logged out: localStorage is source-of-truth (old format without uid)
+ * - Firestore is the ONLY source-of-truth (read via onSnapshot)
+ * - User must be logged in to use this hook
+ * - No localStorage fallback - Firestore only
  * - Firestore path: users/{uid}/portfolio/data (matches Firestore rules)
- * - During loading: preserve last known data (don't reset to empty)
  */
 export const usePortfolioData = (user, key, defaultValue) => {
-  // Initialize state from localStorage to preserve data during loading
-  const [data, setData] = useState(() => {
-    // Try to load from localStorage on initial mount
-    try {
-      const oldKey = key.includes('_v') ? key : `pf_${key}_v24`;
-      const oldStored = localStorage.getItem(oldKey);
-      if (oldStored) {
-        return JSON.parse(oldStored);
-      }
-    } catch (err) {
-      // Ignore errors on initial load
-    }
-    return defaultValue;
-  });
-  
+  const [data, setData] = useState(defaultValue);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const unsubscribeRef = useRef(null);
   const previousUidRef = useRef(null); // Track previous UID to detect changes
-  const isInitialMountRef = useRef(true); // Track if this is the first mount
-
-  // Save to localStorage as backup (only when user is logged in)
-  const saveToLocalStorage = useCallback((value, uid) => {
-    try {
-      if (uid) {
-        localStorage.setItem(getStorageKey(uid, key), JSON.stringify(value));
-      }
-    } catch (err) {
-      logger.warn(`[PortfolioData] Failed to save to localStorage:`, err);
-    }
-  }, [key]);
-
-  // Load from localStorage as fallback
-  // Priority: 1) uid-specific key, 2) old format (without uid) for backward compatibility
-  const loadFromLocalStorage = useCallback((uid) => {
-    try {
-      // First try uid-specific key (for logged-in users)
-      if (uid) {
-        const stored = localStorage.getItem(getStorageKey(uid, key));
-        if (stored) {
-          logger.log(`[PortfolioData] Loaded from localStorage (uid-specific): ${getStorageKey(uid, key)}`);
-          return JSON.parse(stored);
-        }
-      }
-      
-      // Then try old localStorage format (without uid) - for backward compatibility and logged-out state
-      const oldKey = key.includes('_v') ? key : `pf_${key}_v24`;
-      const oldStored = localStorage.getItem(oldKey);
-      if (oldStored) {
-        logger.log(`[PortfolioData] Loaded from localStorage (old format): ${oldKey}`);
-        return JSON.parse(oldStored);
-      }
-    } catch (err) {
-      logger.warn(`[PortfolioData] Failed to load from localStorage:`, err);
-    }
-    return defaultValue;
-  }, [key, defaultValue]);
 
   // Save to Firestore using the single source-of-truth helper
   const saveToFirestore = useCallback(async (value, uid) => {
     if (!db || !uid || firebaseError) {
       logger.warn(`[PortfolioData] Cannot save to Firestore - db: ${!!db}, uid: ${!!uid}, firebaseError: ${!!firebaseError}`);
-      return;
+      throw new Error('Cannot save to Firestore: Firebase not available');
     }
 
     const docRef = portfolioDocRef(db, uid);
     if (!docRef) {
       logger.warn(`[PortfolioData] portfolioDocRef returned null for uid: ${uid}`);
-      return;
+      throw new Error('Document reference is null');
     }
 
     const path = getPortfolioDocPath(uid);
@@ -161,7 +106,6 @@ export const usePortfolioData = (user, key, defaultValue) => {
     const currentUid = user?.uid;
     const isLoggedIn = currentUid && db && !firebaseError;
 
-    // DEV DEBUG: Log current state
     logger.log(`[PortfolioData] ===== useEffect triggered =====`);
     logger.log(`[PortfolioData] - Field: ${key}`);
     logger.log(`[PortfolioData] - currentUser.uid: ${currentUid || 'null (logged out)'}`);
@@ -176,12 +120,10 @@ export const usePortfolioData = (user, key, defaultValue) => {
       unsubscribeRef.current = null;
     }
 
-    // If user is NOT logged in: use localStorage (logout state)
+    // If user is NOT logged in: set default value
     if (!isLoggedIn) {
-      logger.log(`[PortfolioData] 👤 User is logged out - using localStorage for ${key}`);
-      // When logged out, uid is null, so loadFromLocalStorage will try old format
-      const localData = loadFromLocalStorage(null);
-      setData(localData);
+      logger.log(`[PortfolioData] 👤 User is logged out - setting default value for ${key}`);
+      setData(defaultValue);
       setLoading(false);
       setError(null);
       
@@ -192,7 +134,6 @@ export const usePortfolioData = (user, key, defaultValue) => {
       }
       
       previousUidRef.current = currentUid;
-      isInitialMountRef.current = false;
       return;
     }
 
@@ -206,27 +147,14 @@ export const usePortfolioData = (user, key, defaultValue) => {
 
     const docRef = portfolioDocRef(db, currentUid);
     if (!docRef) {
-      logger.error(`[PortfolioData] ❌ portfolioDocRef returned null - falling back to localStorage`);
-      const localData = loadFromLocalStorage(currentUid);
-      setData(localData);
+      logger.error(`[PortfolioData] ❌ portfolioDocRef returned null`);
+      setData(defaultValue);
       setLoading(false);
+      setError(new Error('Document reference is null'));
       previousUidRef.current = currentUid;
-      isInitialMountRef.current = false;
       return;
     }
 
-    // CRITICAL: Preserve current data when user logs in (before first snapshot)
-    // This prevents UI from going blank during loading
-    if (isInitialMountRef.current || previousUidRef.current !== currentUid) {
-      logger.log(`[PortfolioData] 🔄 User logged in or UID changed - preserving current data during loading`);
-      const preservedData = loadFromLocalStorage(currentUid);
-      if (preservedData !== defaultValue) {
-        logger.log(`[PortfolioData] - Preserving data from localStorage to prevent blank UI`);
-        setData(preservedData);
-      }
-    }
-
-    // Set loading state - but DON'T reset data
     setLoading(true);
     setError(null);
 
@@ -234,7 +162,6 @@ export const usePortfolioData = (user, key, defaultValue) => {
     logger.log(`[PortfolioData] 📡 Setting up onSnapshot listener for ${key}`);
     logger.log(`[PortfolioData] - Reading from: ${path}`);
     logger.log(`[PortfolioData] - Using same docRef as WRITE operations`);
-    logger.log(`[PortfolioData] - Current data preserved, waiting for first snapshot...`);
 
     unsubscribeRef.current = onSnapshot(
       docRef,
@@ -257,41 +184,32 @@ export const usePortfolioData = (user, key, defaultValue) => {
               logger.log(`[PortfolioData] - Data preview: ${JSON.stringify(firestoreData[key]).substring(0, 100)}...`);
               
               setData(firestoreData[key]);
-              // Save to localStorage as backup (uid-specific)
-              saveToLocalStorage(firestoreData[key], currentUid);
               setError(null);
             } else {
               logger.warn(`[PortfolioData] ⚠️ Field "${key}" NOT found in Firestore document`);
               logger.warn(`[PortfolioData] - Available fields: ${fields.join(', ')}`);
-              logger.warn(`[PortfolioData] - Loading from localStorage as fallback`);
+              logger.warn(`[PortfolioData] - Using default value`);
               
-              // Field doesn't exist - try loading from localStorage (tries both uid-specific and old format)
-              const localData = loadFromLocalStorage(currentUid);
-              setData(localData);
+              // Field doesn't exist - use default value
+              setData(defaultValue);
               setError(null);
             }
           } else {
             // Document doesn't exist yet
             logger.log(`[PortfolioData] ⚠️ Document doesn't exist at ${path}`);
-            logger.log(`[PortfolioData] - Loading from localStorage as fallback (tries both uid-specific and old format)`);
+            logger.log(`[PortfolioData] - Using default value`);
             
-            // Document doesn't exist - load from localStorage (tries both uid-specific and old format)
-            const localData = loadFromLocalStorage(currentUid);
-            setData(localData);
+            // Document doesn't exist - use default value
+            setData(defaultValue);
             setError(null);
           }
           
-          // First snapshot received - loading is complete
           setLoading(false);
-          isInitialMountRef.current = false;
         } catch (err) {
           logger.error(`[PortfolioData] ❌ Error in onSnapshot callback for ${key}:`, err);
           setError(err);
-          // On error, fallback to localStorage
-          const localData = loadFromLocalStorage(currentUid);
-          setData(localData);
+          setData(defaultValue);
           setLoading(false);
-          isInitialMountRef.current = false;
         }
       },
       (err) => {
@@ -306,16 +224,8 @@ export const usePortfolioData = (user, key, defaultValue) => {
         }
         
         setError(err);
-        // Fallback to localStorage on error
-        try {
-          const localData = loadFromLocalStorage(currentUid);
-          setData(localData);
-        } catch (localErr) {
-          logger.error(`[PortfolioData] Failed to load from localStorage:`, localErr);
-          // Keep current state on localStorage error
-        }
+        setData(defaultValue);
         setLoading(false);
-        isInitialMountRef.current = false;
       }
     );
 
@@ -330,20 +240,15 @@ export const usePortfolioData = (user, key, defaultValue) => {
         unsubscribeRef.current = null;
       }
     };
-  }, [user?.uid, key, defaultValue, loadFromLocalStorage, saveToLocalStorage, firebaseError]);
+  }, [user?.uid, key, defaultValue, firebaseError]);
 
-  // Update function that saves to both Firestore and localStorage
+  // Update function that saves to Firestore
   const updateData = useCallback((newData) => {
     setData(prevData => {
       const valueToStore = typeof newData === 'function' ? newData(prevData) : newData;
       const currentUid = user?.uid;
       
       logger.log(`[PortfolioData] updateData called for ${key}, user: ${currentUid || 'logged out'}`);
-      
-      // Save to localStorage immediately as backup
-      if (currentUid) {
-        saveToLocalStorage(valueToStore, currentUid);
-      }
 
       // Save to Firestore if user is logged in
       if (currentUid && db && !firebaseError) {
@@ -353,11 +258,13 @@ export const usePortfolioData = (user, key, defaultValue) => {
           logger.error(`[PortfolioData] ❌ Failed to save ${key} to Firestore:`, err);
           setError(err);
         });
+      } else {
+        logger.warn(`[PortfolioData] Cannot save ${key} - user not logged in or Firebase not available`);
       }
 
       return valueToStore;
     });
-  }, [user?.uid, key, saveToLocalStorage, saveToFirestore]);
+  }, [user?.uid, key, saveToFirestore]);
 
   return [data, updateData, loading, error];
 };
