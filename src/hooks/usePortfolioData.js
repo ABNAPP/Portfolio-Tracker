@@ -14,6 +14,8 @@ const getStorageKey = (uid, key) => `pf_${uid}_${key}`;
  * Correct: doc(db, 'users', uid, 'portfolio', 'data')
  * Wrong: doc(db, 'users/${uid}/portfolio/data')
  * 
+ * This path matches Firestore rules: users/{userId}/portfolio/{document=**}
+ * 
  * @param {object} db - Firestore database instance
  * @param {string} uid - User ID
  * @returns {object|null} Firestore document reference or null
@@ -24,6 +26,7 @@ const portfolioDocRef = (db, uid) => {
   }
   try {
     // Exact path: users/{uid}/portfolio/data
+    // This matches Firestore rules: users/{userId}/portfolio/{document=**}
     // Use separate segments as Firestore requires
     return doc(db, 'users', uid, 'portfolio', 'data');
   } catch (err) {
@@ -35,6 +38,7 @@ const portfolioDocRef = (db, uid) => {
 /**
  * Get Firestore document path as string (for logging/debugging only)
  * This matches exactly what portfolioDocRef uses
+ * This path matches Firestore rules: users/{userId}/portfolio/{document=**}
  */
 const getPortfolioDocPath = (uid) => {
   if (!uid) return null;
@@ -46,8 +50,8 @@ const getPortfolioDocPath = (uid) => {
  * 
  * RULES:
  * - When user is logged in: Firestore is source-of-truth (read via onSnapshot)
- * - When user is logged out: localStorage is source-of-truth
- * - If doc doesn't exist when logged in: load from localStorage (don't show empty UI)
+ * - When user is logged out: localStorage is source-of-truth (old format without uid)
+ * - Firestore path: users/{uid}/portfolio/data (matches Firestore rules)
  */
 export const usePortfolioData = (user, key, defaultValue) => {
   const [data, setData] = useState(defaultValue);
@@ -67,19 +71,24 @@ export const usePortfolioData = (user, key, defaultValue) => {
     }
   }, [key]);
 
-  // Load from localStorage as fallback (only when user is NOT logged in or doc doesn't exist)
+  // Load from localStorage as fallback
+  // Priority: 1) uid-specific key, 2) old format (without uid) for backward compatibility
   const loadFromLocalStorage = useCallback((uid) => {
     try {
+      // First try uid-specific key (for logged-in users)
       if (uid) {
         const stored = localStorage.getItem(getStorageKey(uid, key));
         if (stored) {
+          logger.log(`[PortfolioData] Loaded from localStorage (uid-specific): ${getStorageKey(uid, key)}`);
           return JSON.parse(stored);
         }
       }
-      // Try old localStorage format (without uid) - for backward compatibility
+      
+      // Then try old localStorage format (without uid) - for backward compatibility and logged-out state
       const oldKey = key.includes('_v') ? key : `pf_${key}_v24`;
       const oldStored = localStorage.getItem(oldKey);
       if (oldStored) {
+        logger.log(`[PortfolioData] Loaded from localStorage (old format): ${oldKey}`);
         return JSON.parse(oldStored);
       }
     } catch (err) {
@@ -106,7 +115,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
     logger.log(`[PortfolioData] - Field: ${key}`);
     logger.log(`[PortfolioData] - currentUser.uid: ${uid}`);
     logger.log(`[PortfolioData] - Firestore path: ${path}`);
-    logger.log(`[PortfolioData] - Using portfolioDocRef() helper`);
+    logger.log(`[PortfolioData] - Path matches rules: users/{userId}/portfolio/{document=**}`);
 
     try {
       await setDoc(
@@ -154,7 +163,8 @@ export const usePortfolioData = (user, key, defaultValue) => {
     // If user is NOT logged in: use localStorage (logout state)
     if (!isLoggedIn) {
       logger.log(`[PortfolioData] 👤 User is logged out - using localStorage for ${key}`);
-      const localData = loadFromLocalStorage(currentUid);
+      // When logged out, uid is null, so loadFromLocalStorage will try old format
+      const localData = loadFromLocalStorage(null);
       setData(localData);
       setLoading(false);
       setError(null);
@@ -174,6 +184,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
     
     const path = getPortfolioDocPath(currentUid);
     logger.log(`[PortfolioData] - Firestore path: ${path}`);
+    logger.log(`[PortfolioData] - Path matches rules: users/{userId}/portfolio/{document=**}`);
     logger.log(`[PortfolioData] - Using portfolioDocRef() helper (same as WRITE)`);
 
     const docRef = portfolioDocRef(db, currentUid);
@@ -215,7 +226,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
               logger.log(`[PortfolioData] - Data preview: ${JSON.stringify(firestoreData[key]).substring(0, 100)}...`);
               
               setData(firestoreData[key]);
-              // Save to localStorage as backup
+              // Save to localStorage as backup (uid-specific)
               saveToLocalStorage(firestoreData[key], currentUid);
               setError(null);
             } else {
@@ -223,7 +234,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
               logger.warn(`[PortfolioData] - Available fields: ${fields.join(', ')}`);
               logger.warn(`[PortfolioData] - Loading from localStorage as fallback`);
               
-              // Field doesn't exist - try loading from localStorage
+              // Field doesn't exist - try loading from localStorage (tries both uid-specific and old format)
               const localData = loadFromLocalStorage(currentUid);
               setData(localData);
               setError(null);
@@ -231,9 +242,9 @@ export const usePortfolioData = (user, key, defaultValue) => {
           } else {
             // Document doesn't exist yet
             logger.log(`[PortfolioData] ⚠️ Document doesn't exist at ${path}`);
-            logger.log(`[PortfolioData] - Loading from localStorage as fallback`);
+            logger.log(`[PortfolioData] - Loading from localStorage as fallback (tries both uid-specific and old format)`);
             
-            // Document doesn't exist - load from localStorage
+            // Document doesn't exist - load from localStorage (tries both uid-specific and old format)
             const localData = loadFromLocalStorage(currentUid);
             setData(localData);
             setError(null);
@@ -256,6 +267,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
         // Check for permission errors
         if (err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED' || 
             (err.message && err.message.includes('Missing or insufficient permissions'))) {
+          logger.error(`[PortfolioData] - Permission denied! Check Firestore rules match path: ${path}`);
           setFirestorePermissionError(err);
         }
         
