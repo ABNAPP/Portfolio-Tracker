@@ -1,28 +1,46 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { onSnapshot, setDoc } from 'firebase/firestore';
-import { db, getPortfolioDoc, PORTFOLIO_DOC_PATH, firebaseError, setFirestorePermissionError } from '../config/firebase';
+import { onSnapshot, setDoc, doc } from 'firebase/firestore';
+import { db, firebaseError, setFirestorePermissionError } from '../config/firebase';
 import { logger } from '../utils/logger';
 
 // Helper to get localStorage key for a user
 const getStorageKey = (uid, key) => `pf_${uid}_${key}`;
 
 /**
- * Hook for syncing portfolio data with Firestore
- * Falls back to localStorage if Firestore is unavailable or user is not logged in
+ * SINGLE SOURCE OF TRUTH for Firestore document reference
+ * Used for ALL operations: getDoc, onSnapshot, setDoc, updateDoc
  * 
- * IMPORTANT: When user logs in and document doesn't exist in Firestore,
- * we do NOT automatically load from localStorage. We wait for data to be written to Firestore.
- * localStorage fallback only happens when:
- * - User is not logged in (logout state)
- * - Firestore is unavailable
- * - Error reading from Firestore
+ * @param {object} db - Firestore database instance
+ * @param {string} uid - User ID
+ * @returns {object|null} Firestore document reference or null
+ */
+const portfolioDocRef = (db, uid) => {
+  if (!db || !uid) {
+    return null;
+  }
+  try {
+    // Exact path: users/{uid}/portfolio/data
+    return doc(db, `users/${uid}/portfolio/data`);
+  } catch (err) {
+    logger.error(`[PortfolioData] portfolioDocRef error:`, err);
+    return null;
+  }
+};
+
+/**
+ * Hook for syncing portfolio data with Firestore
+ * 
+ * RULES:
+ * - When user is logged in: Firestore is source-of-truth (read via onSnapshot)
+ * - When user is logged out: localStorage is source-of-truth
+ * - If doc doesn't exist when logged in: keep current state (don't reset to default)
  */
 export const usePortfolioData = (user, key, defaultValue) => {
   const [data, setData] = useState(defaultValue);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const unsubscribeRef = useRef(null);
-  const currentUidRef = useRef(null); // Track current UID to detect user changes
+  const previousUidRef = useRef(null); // Track previous UID to detect changes
 
   // Save to localStorage as backup (only when user is logged in)
   const saveToLocalStorage = useCallback((value, uid) => {
@@ -35,7 +53,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
     }
   }, [key]);
 
-  // Load from localStorage as fallback (only when user is NOT logged in or Firestore unavailable)
+  // Load from localStorage as fallback (only when user is NOT logged in)
   const loadFromLocalStorage = useCallback((uid) => {
     try {
       if (uid) {
@@ -56,34 +74,36 @@ export const usePortfolioData = (user, key, defaultValue) => {
     return defaultValue;
   }, [key, defaultValue]);
 
-  // Save to Firestore
+  // Save to Firestore using the single source-of-truth helper
   const saveToFirestore = useCallback(async (value, uid) => {
     if (!db || !uid || firebaseError) {
       logger.warn(`[PortfolioData] Cannot save to Firestore - db: ${!!db}, uid: ${!!uid}, firebaseError: ${!!firebaseError}`);
       return;
     }
 
+    const docRef = portfolioDocRef(db, uid);
+    if (!docRef) {
+      logger.warn(`[PortfolioData] portfolioDocRef returned null for uid: ${uid}`);
+      return;
+    }
+
+    const path = `users/${uid}/portfolio/data`;
+    logger.log(`[PortfolioData] WRITE: Saving ${key} to Firestore`);
+    logger.log(`[PortfolioData] - currentUser.uid: ${uid}`);
+    logger.log(`[PortfolioData] - Firestore path: ${path}`);
+
     try {
-      const docRef = getPortfolioDoc(uid);
-      if (!docRef) {
-        logger.warn(`[PortfolioData] getPortfolioDoc returned null for uid: ${uid}`);
-        return;
-      }
-      
-      const path = PORTFOLIO_DOC_PATH(uid);
-      logger.log(`[PortfolioData] Saving ${key} to Firestore - UID: ${uid}, Path: ${path}`);
-      
       await setDoc(
         docRef,
         { [key]: value, updatedAt: new Date().toISOString() },
         { merge: true }
       );
       
-      logger.log(`[PortfolioData] Successfully saved ${key} to Firestore - Path: ${path}`);
+      logger.log(`[PortfolioData] WRITE: Successfully saved ${key} to Firestore`);
+      logger.log(`[PortfolioData] - Path: ${path}`);
     } catch (err) {
-      logger.error(`[PortfolioData] Failed to save to Firestore:`, err);
-      logger.error(`[PortfolioData] Error code:`, err.code);
-      logger.error(`[PortfolioData] Error message:`, err.message);
+      logger.error(`[PortfolioData] WRITE: Failed to save ${key} to Firestore:`, err);
+      logger.error(`[PortfolioData] - Error code: ${err.code}, message: ${err.message}`);
       
       // Check for permission errors and set global error
       if (err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED' || 
@@ -95,154 +115,145 @@ export const usePortfolioData = (user, key, defaultValue) => {
     }
   }, [key]);
 
-  // Set up Firestore listener
+  // Main effect: Set up Firestore listener when user is logged in
   useEffect(() => {
     const currentUid = user?.uid;
-    const hasUser = currentUid && !firebaseError;
-    const hasDb = !!db;
+    const isLoggedIn = currentUid && db && !firebaseError;
 
-    // Clean up previous listener if UID changed
-    if (unsubscribeRef.current && currentUidRef.current !== currentUid) {
-      logger.log(`[PortfolioData] UID changed from ${currentUidRef.current} to ${currentUid} - cleaning up old listener`);
+    // DEV DEBUG: Log current state
+    logger.log(`[PortfolioData] useEffect triggered for ${key}`);
+    logger.log(`[PortfolioData] - currentUser.uid: ${currentUid || 'null (logged out)'}`);
+    logger.log(`[PortfolioData] - isLoggedIn: ${isLoggedIn}`);
+    logger.log(`[PortfolioData] - previousUid: ${previousUidRef.current || 'none'}`);
+
+    // If UID changed, cleanup previous listener
+    if (unsubscribeRef.current && previousUidRef.current !== currentUid) {
+      logger.log(`[PortfolioData] UID changed: ${previousUidRef.current} → ${currentUid}`);
+      logger.log(`[PortfolioData] - Unsubscribing previous listener`);
       unsubscribeRef.current();
       unsubscribeRef.current = null;
     }
 
-    // Update current UID reference
-    currentUidRef.current = currentUid;
-
-    // If no user or no Firestore - use localStorage fallback (logout state)
-    if (!hasUser || !hasDb) {
-      logger.log(`[PortfolioData] No user or no Firestore - using localStorage fallback for ${key}`);
-      logger.log(`[PortfolioData] - hasUser: ${hasUser}, hasDb: ${hasDb}, uid: ${currentUid}`);
-      
+    // If user is NOT logged in: use localStorage (logout state)
+    if (!isLoggedIn) {
+      logger.log(`[PortfolioData] User is logged out - using localStorage for ${key}`);
       const localData = loadFromLocalStorage(currentUid);
       setData(localData);
       setLoading(false);
       setError(null);
       
-      // Clean up listener if it exists
+      // Clean up any existing listener
       if (unsubscribeRef.current) {
         unsubscribeRef.current();
         unsubscribeRef.current = null;
       }
       
+      previousUidRef.current = currentUid;
       return;
     }
 
-    // User is logged in and Firestore is available - set up listener
-    logger.log(`[PortfolioData] Setting up Firestore listener for ${key}`);
-    logger.log(`[PortfolioData] - UID: ${currentUid}`);
+    // User IS logged in: Firestore is source-of-truth
+    logger.log(`[PortfolioData] User is logged in - setting up Firestore listener for ${key}`);
     
-    const path = PORTFOLIO_DOC_PATH(currentUid);
-    logger.log(`[PortfolioData] - Firestore Path: ${path}`);
+    const path = `users/${currentUid}/portfolio/data`;
+    logger.log(`[PortfolioData] - Firestore path: ${path}`);
+
+    const docRef = portfolioDocRef(db, currentUid);
+    if (!docRef) {
+      logger.error(`[PortfolioData] portfolioDocRef returned null - falling back to localStorage`);
+      const localData = loadFromLocalStorage(currentUid);
+      setData(localData);
+      setLoading(false);
+      previousUidRef.current = currentUid;
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
-    try {
-      const docRef = getPortfolioDoc(currentUid);
-      if (!docRef) {
-        logger.warn(`[PortfolioData] getPortfolioDoc returned null, falling back to localStorage for ${key}`);
-        const localData = loadFromLocalStorage(currentUid);
-        setData(localData);
-        setLoading(false);
-        return;
-      }
+    // Set up onSnapshot listener
+    logger.log(`[PortfolioData] Setting up onSnapshot listener for ${key}`);
+    logger.log(`[PortfolioData] - Reading from: ${path}`);
 
-      // Set up real-time listener with error handling
-      unsubscribeRef.current = onSnapshot(
-        docRef,
-        (snapshot) => {
-          try {
-            const path = PORTFOLIO_DOC_PATH(currentUid);
-            logger.log(`[PortfolioData] onSnapshot callback triggered for ${key}`);
-            logger.log(`[PortfolioData] - Path: ${path}`);
-            logger.log(`[PortfolioData] - snapshot.exists(): ${snapshot.exists()}`);
+    unsubscribeRef.current = onSnapshot(
+      docRef,
+      (snapshot) => {
+        try {
+          logger.log(`[PortfolioData] READ: onSnapshot callback triggered for ${key}`);
+          logger.log(`[PortfolioData] - currentUser.uid: ${currentUid}`);
+          logger.log(`[PortfolioData] - Firestore path: ${path}`);
+          logger.log(`[PortfolioData] - snapshot.exists(): ${snapshot.exists()}`);
 
-            if (snapshot.exists()) {
-              const firestoreData = snapshot.data();
-              logger.log(`[PortfolioData] - Firestore data fields:`, Object.keys(firestoreData));
+          if (snapshot.exists()) {
+            const firestoreData = snapshot.data();
+            const fields = Object.keys(firestoreData);
+            logger.log(`[PortfolioData] - Firestore data fields: ${fields.join(', ')}`);
+
+            // Extract the specific key from Firestore document
+            if (firestoreData[key] !== undefined) {
+              logger.log(`[PortfolioData] - Found field "${key}" in Firestore`);
+              logger.log(`[PortfolioData] - Data type: ${typeof firestoreData[key]}, has content: ${JSON.stringify(firestoreData[key]).length > 0}`);
               
-              // Extract the specific key from Firestore document
-              const newData = firestoreData[key] !== undefined ? firestoreData[key] : defaultValue;
-              
-              logger.log(`[PortfolioData] - Extracted ${key}:`, newData !== defaultValue ? 'has data' : 'default/empty');
-              
-              setData(newData);
+              setData(firestoreData[key]);
               // Save to localStorage as backup
-              saveToLocalStorage(newData, currentUid);
+              saveToLocalStorage(firestoreData[key], currentUid);
               setError(null);
             } else {
-              // Document doesn't exist in Firestore
-              // IMPORTANT: Do NOT load from localStorage here (that's for logout state only)
-              // Just set default value and wait for data to be written to Firestore
-              logger.log(`[PortfolioData] Document doesn't exist at ${path}`);
-              logger.log(`[PortfolioData] - Setting default value, waiting for data to be written`);
-              
-              setData(defaultValue);
+              logger.warn(`[PortfolioData] - Field "${key}" NOT found in Firestore document`);
+              logger.warn(`[PortfolioData] - Available fields: ${fields.join(', ')}`);
+              logger.warn(`[PortfolioData] - Keeping current state (not resetting to default)`);
+              // Don't reset to default - keep current state
               setError(null);
-              // DO NOT save default to localStorage here - we want to wait for actual data
             }
-            
-            setLoading(false);
-          } catch (err) {
-            logger.error(`[PortfolioData] Error in snapshot callback for ${key}:`, err);
-            setError(err);
-            // On error, fallback to localStorage as safety measure
-            const localData = loadFromLocalStorage(currentUid);
-            setData(localData);
-            setLoading(false);
-          }
-        },
-        (err) => {
-          logger.error(`[PortfolioData] Firestore listener error for ${key}:`, err);
-          logger.error(`[PortfolioData] - Error code:`, err.code);
-          logger.error(`[PortfolioData] - Error message:`, err.message);
-          
-          // Check for permission errors and set global error
-          if (err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED' || 
-              (err.message && err.message.includes('Missing or insufficient permissions'))) {
-            setFirestorePermissionError(err);
+          } else {
+            // Document doesn't exist yet
+            logger.log(`[PortfolioData] - Document doesn't exist at ${path}`);
+            logger.log(`[PortfolioData] - Keeping current state (not resetting to default)`);
+            // Keep current state - don't reset to defaultValue
+            // This prevents UI from going blank when doc doesn't exist yet
+            setError(null);
           }
           
+          setLoading(false);
+        } catch (err) {
+          logger.error(`[PortfolioData] Error in onSnapshot callback for ${key}:`, err);
           setError(err);
-          // Fallback to localStorage on error
-          try {
-            const localData = loadFromLocalStorage(currentUid);
-            setData(localData);
-          } catch (localErr) {
-            logger.error(`[PortfolioData] Failed to load from localStorage:`, localErr);
-            setData(defaultValue);
-          }
+          // On error, fallback to localStorage
+          const localData = loadFromLocalStorage(currentUid);
+          setData(localData);
           setLoading(false);
         }
-      );
-    } catch (err) {
-      logger.error(`[PortfolioData] Failed to set up listener for ${key}:`, err);
-      
-      // Check for permission errors
-      if (err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED' || 
-          (err.message && err.message.includes('Missing or insufficient permissions'))) {
-        setFirestorePermissionError(err);
+      },
+      (err) => {
+        logger.error(`[PortfolioData] onSnapshot error for ${key}:`, err);
+        logger.error(`[PortfolioData] - Error code: ${err.code}, message: ${err.message}`);
+        
+        // Check for permission errors
+        if (err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED' || 
+            (err.message && err.message.includes('Missing or insufficient permissions'))) {
+          setFirestorePermissionError(err);
+        }
+        
+        setError(err);
+        // Fallback to localStorage on error
+        try {
+          const localData = loadFromLocalStorage(currentUid);
+          setData(localData);
+        } catch (localErr) {
+          logger.error(`[PortfolioData] Failed to load from localStorage:`, localErr);
+          // Keep current state on localStorage error
+        }
+        setLoading(false);
       }
-      
-      setError(err);
-      // Fallback to localStorage on setup error
-      try {
-        const localData = loadFromLocalStorage(currentUid);
-        setData(localData);
-      } catch (localErr) {
-        logger.error(`[PortfolioData] Failed to load from localStorage:`, localErr);
-        setData(defaultValue);
-      }
-      setLoading(false);
-    }
+    );
 
-    // Cleanup function - unsubscribe when component unmounts or dependencies change
+    // Update previous UID reference
+    previousUidRef.current = currentUid;
+
+    // Cleanup function
     return () => {
       if (unsubscribeRef.current) {
-        logger.log(`[PortfolioData] Cleaning up Firestore listener for ${key}, UID: ${currentUidRef.current}`);
+        logger.log(`[PortfolioData] Cleaning up Firestore listener for ${key}`);
         unsubscribeRef.current();
         unsubscribeRef.current = null;
       }
@@ -255,24 +266,21 @@ export const usePortfolioData = (user, key, defaultValue) => {
       const valueToStore = typeof newData === 'function' ? newData(prevData) : newData;
       const currentUid = user?.uid;
       
-      logger.log(`[PortfolioData] updateData called for ${key}, user: ${currentUid}`);
+      logger.log(`[PortfolioData] updateData called for ${key}, user: ${currentUid || 'logged out'}`);
       
       // Save to localStorage immediately as backup
       if (currentUid) {
         saveToLocalStorage(valueToStore, currentUid);
       }
 
-      // Save to Firestore asynchronously - ALWAYS try to save if user is logged in
+      // Save to Firestore if user is logged in
       if (currentUid && db && !firebaseError) {
         saveToFirestore(valueToStore, currentUid).then(() => {
           logger.log(`[PortfolioData] Successfully saved ${key} update to Firestore`);
         }).catch(err => {
           logger.error(`[PortfolioData] Failed to save ${key} to Firestore:`, err);
-          // Permission errors are already handled in saveToFirestore
           setError(err);
         });
-      } else {
-        logger.warn(`[PortfolioData] Not saving to Firestore - user: ${!!currentUid}, db: ${!!db}, firebaseError: ${!!firebaseError}`);
       }
 
       return valueToStore;
@@ -281,3 +289,4 @@ export const usePortfolioData = (user, key, defaultValue) => {
 
   return [data, updateData, loading, error];
 };
+

@@ -29,8 +29,7 @@ const ModalLoader = () => (
   </div>
 );
 import { useLocalStorage, useApi, useBenchmark, useAuth, usePortfolioData } from './hooks';
-import { getPortfolioDoc, PORTFOLIO_DOC_PATH, db, auth, firebaseError, getFirebaseError } from './config/firebase';
-import { getDoc } from 'firebase/firestore';
+import { db, auth, firebaseError, getFirebaseError } from './config/firebase';
 import { logger } from './utils/logger';
 import { TRANSLATIONS } from './utils/translations';
 import { 
@@ -152,70 +151,8 @@ function App() {
     }
   }, [theme]);
   
-  // Migrate data to Firestore on first login
-  useEffect(() => {
-    // Only run migration if user is logged in and db is available
-    if (!user?.uid) return;
-    if (!db || firebaseError) {
-      logger.log('[App] Skipping migration - db not available or Firebase error');
-      return;
-    }
-    
-    // Check if we need to migrate old localStorage data
-    const oldDataKey = 'pf_data_v24';
-    const oldFxKey = 'pf_fx_rates_v24';
-    const oldBaseCurrKey = 'base_curr';
-    
-    try {
-      const oldData = localStorage.getItem(oldDataKey);
-      const oldFx = localStorage.getItem(oldFxKey);
-      const oldBaseCurr = localStorage.getItem(oldBaseCurrKey);
-      
-      if (oldData || oldFx || oldBaseCurr) {
-        const path = PORTFOLIO_DOC_PATH(user.uid);
-        logger.log('[App] Found old localStorage data, checking if migration needed...');
-        logger.log(`[App] - Checking Firestore path: ${path}`);
-        
-        // Check if data already exists in Firestore
-        const docRef = getPortfolioDoc(user.uid);
-        
-        if (docRef) {
-          getDoc(docRef).then(snapshot => {
-            logger.log(`[App] - Firestore document exists: ${snapshot.exists()}`);
-            
-            if (!snapshot.exists()) {
-              logger.log('[App] Firestore document doesn\'t exist, migrating from localStorage...');
-              logger.log(`[App] - Path: ${path}`);
-              
-              // Data will be migrated automatically by usePortfolioData hook
-              // But we can trigger it explicitly here
-              if (oldData) {
-                try {
-                  const parsedData = JSON.parse(oldData);
-                  if (parsedData && (parsedData.holdings?.length > 0 || parsedData.cashAccounts?.length > 0)) {
-                    logger.log('[App] Migrating portfolio data to Firestore...');
-                    logger.log(`[App] - Holdings: ${parsedData.holdings?.length || 0}, Cash accounts: ${parsedData.cashAccounts?.length || 0}`);
-                    setData(parsedData);
-                  }
-                } catch (e) {
-                  logger.warn('[App] Failed to parse old data:', e);
-                }
-              }
-            } else {
-              const firestoreData = snapshot.data();
-              logger.log('[App] Firestore document already exists, no migration needed');
-              logger.log(`[App] - Existing fields: ${Object.keys(firestoreData).join(', ')}`);
-            }
-          }).catch(err => {
-            logger.warn('[App] Error checking Firestore document:', err);
-            logger.warn(`[App] - Error code: ${err.code}, message: ${err.message}`);
-          });
-        }
-      }
-    } catch (err) {
-      logger.warn('[App] Error during migration check:', err);
-    }
-  }, [user?.uid, db, firebaseError, setData]);
+  // Note: Migration is now handled automatically by usePortfolioData hook
+  // No need for separate migration logic here
   
   // Fetch FX rates on mount
   useEffect(() => {
