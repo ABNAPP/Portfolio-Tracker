@@ -7,7 +7,8 @@ import {
   Notification,
   useNotification,
   AuthScreen,
-  FirebaseConfigError
+  FirebaseConfigError,
+  DevTools
 } from './components';
 
 // Lazy load modals and charts for better code splitting
@@ -2051,6 +2052,9 @@ function App() {
             </div>
           )}
         </div>
+
+        {/* DevTools - Only in development */}
+        {import.meta.env.DEV && <DevTools user={user} />}
       </div>
     </ErrorBoundary>
   );

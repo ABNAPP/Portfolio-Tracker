@@ -17,4 +17,5 @@ export { default as DashboardCards } from './DashboardCards';
 export { AuthScreen } from './AuthScreen';
 export { FirebaseConfigError } from './FirebaseConfigError';
 
-
+// Dev Tools (DEV only)
+export { DevTools } from './DevTools';
