@@ -29,7 +29,7 @@ const ModalLoader = () => (
   </div>
 );
 import { useLocalStorage, useApi, useBenchmark, useAuth, usePortfolioData } from './hooks';
-import { getPortfolioDoc, db, auth, firebaseError, getFirebaseError } from './config/firebase';
+import { getPortfolioDoc, PORTFOLIO_DOC_PATH, db, auth, firebaseError, getFirebaseError } from './config/firebase';
 import { getDoc } from 'firebase/firestore';
 import { logger } from './utils/logger';
 import { TRANSLATIONS } from './utils/translations';
@@ -172,15 +172,21 @@ function App() {
       const oldBaseCurr = localStorage.getItem(oldBaseCurrKey);
       
       if (oldData || oldFx || oldBaseCurr) {
+        const path = PORTFOLIO_DOC_PATH(user.uid);
         logger.log('[App] Found old localStorage data, checking if migration needed...');
+        logger.log(`[App] - Checking Firestore path: ${path}`);
         
         // Check if data already exists in Firestore
         const docRef = getPortfolioDoc(user.uid);
         
         if (docRef) {
           getDoc(docRef).then(snapshot => {
+            logger.log(`[App] - Firestore document exists: ${snapshot.exists()}`);
+            
             if (!snapshot.exists()) {
               logger.log('[App] Firestore document doesn\'t exist, migrating from localStorage...');
+              logger.log(`[App] - Path: ${path}`);
+              
               // Data will be migrated automatically by usePortfolioData hook
               // But we can trigger it explicitly here
               if (oldData) {
@@ -188,6 +194,7 @@ function App() {
                   const parsedData = JSON.parse(oldData);
                   if (parsedData && (parsedData.holdings?.length > 0 || parsedData.cashAccounts?.length > 0)) {
                     logger.log('[App] Migrating portfolio data to Firestore...');
+                    logger.log(`[App] - Holdings: ${parsedData.holdings?.length || 0}, Cash accounts: ${parsedData.cashAccounts?.length || 0}`);
                     setData(parsedData);
                   }
                 } catch (e) {
@@ -195,10 +202,13 @@ function App() {
                 }
               }
             } else {
+              const firestoreData = snapshot.data();
               logger.log('[App] Firestore document already exists, no migration needed');
+              logger.log(`[App] - Existing fields: ${Object.keys(firestoreData).join(', ')}`);
             }
           }).catch(err => {
             logger.warn('[App] Error checking Firestore document:', err);
+            logger.warn(`[App] - Error code: ${err.code}, message: ${err.message}`);
           });
         }
       }

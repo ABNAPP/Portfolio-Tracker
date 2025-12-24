@@ -48,25 +48,23 @@ const validateFirebaseConfig = () => {
     const missingVars = missing.map(({ envVar }) => envVar).join(', ');
     return {
       valid: false,
-      missing: missing.map(({ key }) => key),
-      missingVars,
-      message: `Firebase configuration is incomplete. Missing environment variables: ${missingVars}. Please add these in Vercel Dashboard → Settings → Environment Variables.`
+      message: `Missing required Firebase environment variables: ${missingVars}`,
+      missingVars: missing.map(({ envVar }) => envVar)
     };
   }
   
   return { valid: true };
 };
 
-// Global error state for Firestore permission errors
+// Firestore Permission Error handling
 let firestorePermissionError = null;
 
-// Function to check if error is a permission error
-export const isPermissionError = (error) => {
+// Helper to check if an error is a permission error
+const isPermissionError = (error) => {
   if (!error) return false;
   return error.code === 'permission-denied' || 
          error.code === 'PERMISSION_DENIED' ||
-         (error.message && error.message.includes('Missing or insufficient permissions')) ||
-         (error.message && error.message.includes('permission'));
+         (error.message && error.message.includes('Missing or insufficient permissions'));
 };
 
 // Function to set Firestore permission error
@@ -151,6 +149,23 @@ export const getFirebaseError = () => {
 
 export { app, auth, db, analytics, firebaseError };
 
+// ============================================================================
+// COMMON FIRESTORE PATH CONSTANTS
+// ============================================================================
+
+/**
+ * Get Firestore document path for portfolio data
+ * This is the SINGLE SOURCE OF TRUTH for portfolio document paths
+ * Used by both READ and WRITE operations to ensure consistency
+ * 
+ * @param {string} uid - User ID
+ * @returns {string} Firestore document path: users/{uid}/portfolio/data
+ */
+export const PORTFOLIO_DOC_PATH = (uid) => {
+  if (!uid) return null;
+  return `users/${uid}/portfolio/data`;
+};
+
 // Helper functions for Firestore paths
 // These functions safely return null if db is not initialized
 export const getPortfolioDoc = (uid) => {
@@ -158,7 +173,15 @@ export const getPortfolioDoc = (uid) => {
     return null;
   }
   try {
-    return doc(db, 'users', uid, 'portfolio', 'data');
+    // Use the common path constant to ensure consistency
+    const path = PORTFOLIO_DOC_PATH(uid);
+    if (!path) return null;
+    
+    logger.log(`[Firebase] getPortfolioDoc - UID: ${uid}, Path: ${path}`);
+    
+    // Split path and use doc() function: 'users/{uid}/portfolio/data' -> ['users', uid, 'portfolio', 'data']
+    const pathParts = path.split('/');
+    return doc(db, ...pathParts);
   } catch (err) {
     logger.error('[Firebase] getPortfolioDoc error:', err);
     return null;
