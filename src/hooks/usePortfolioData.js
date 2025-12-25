@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { onSnapshot, setDoc, doc } from 'firebase/firestore';
+import { setDoc, doc } from 'firebase/firestore';
 import { db, firebaseError, setFirestorePermissionError } from '../config/firebase';
 import { logger } from '../utils/logger';
+import { subscribeToPortfolioDocument, unsubscribeFromPortfolioDocument } from './usePortfolioDocument';
 
 /**
  * SINGLE SOURCE OF TRUTH for Firestore document reference
@@ -55,8 +56,23 @@ export const usePortfolioData = (user, key, defaultValue) => {
   const [data, setData] = useState(defaultValue);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const unsubscribeRef = useRef(null);
-  const previousUidRef = useRef(null); // Track previous UID to detect changes
+  const subscriptionIdRef = useRef(null);
+  const previousUidRef = useRef(null);
+  const callbackRef = useRef(null);
+  
+  // Extract uid as string to avoid object reference issues
+  const uid = user?.uid || null;
+  const hasFirebaseError = !!firebaseError;
+  
+  // Store latest key and defaultValue in refs to use in callback
+  const keyRef = useRef(key);
+  const defaultValueRef = useRef(defaultValue);
+  keyRef.current = key;
+  defaultValueRef.current = defaultValue;
+  
+  // Track previous values to prevent unnecessary state updates
+  const lastErrorRef = useRef(null);
+  const lastLoadingRef = useRef(true);
 
   // Save to Firestore using the single source-of-truth helper
   const saveToFirestore = useCallback(async (value, uid) => {
@@ -71,22 +87,12 @@ export const usePortfolioData = (user, key, defaultValue) => {
       throw new Error('Document reference is null');
     }
 
-    const path = getPortfolioDocPath(uid);
-    logger.log(`[PortfolioData] ===== WRITE =====`);
-    logger.log(`[PortfolioData] - Field: ${key}`);
-    logger.log(`[PortfolioData] - currentUser.uid: ${uid}`);
-    logger.log(`[PortfolioData] - Firestore path: ${path}`);
-    logger.log(`[PortfolioData] - Path matches rules: users/{userId}/portfolio/{document=**}`);
-
     try {
       await setDoc(
         docRef,
         { [key]: value, updatedAt: new Date().toISOString() },
         { merge: true }
       );
-      
-      logger.log(`[PortfolioData] ✅ WRITE: Successfully saved ${key} to Firestore`);
-      logger.log(`[PortfolioData] - Path: ${path}`);
     } catch (err) {
       logger.error(`[PortfolioData] ❌ WRITE: Failed to save ${key} to Firestore:`, err);
       logger.error(`[PortfolioData] - Error code: ${err.code}, message: ${err.message}`);
@@ -101,175 +107,146 @@ export const usePortfolioData = (user, key, defaultValue) => {
     }
   }, [key]);
 
-  // Main effect: Set up Firestore listener when user is logged in
-  useEffect(() => {
-    const currentUid = user?.uid;
-    const isLoggedIn = currentUid && db && !firebaseError;
-
-    logger.log(`[PortfolioData] ===== useEffect triggered =====`);
-    logger.log(`[PortfolioData] - Field: ${key}`);
-    logger.log(`[PortfolioData] - currentUser.uid: ${currentUid || 'null (logged out)'}`);
-    logger.log(`[PortfolioData] - isLoggedIn: ${isLoggedIn}`);
-    logger.log(`[PortfolioData] - previousUid: ${previousUidRef.current || 'none'}`);
-
-    // If UID changed, cleanup previous listener
-    if (unsubscribeRef.current && previousUidRef.current !== null && previousUidRef.current !== currentUid) {
-      logger.log(`[PortfolioData] 🔄 UID changed: ${previousUidRef.current} → ${currentUid}`);
-      logger.log(`[PortfolioData] - Unsubscribing previous listener`);
-      unsubscribeRef.current();
-      unsubscribeRef.current = null;
-    }
-
-    // If user is NOT logged in: set default value
-    if (!isLoggedIn) {
-      logger.log(`[PortfolioData] 👤 User is logged out - setting default value for ${key}`);
-      setData(defaultValue);
-      setLoading(false);
-      setError(null);
-      
-      // Clean up any existing listener
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
-      
-      previousUidRef.current = currentUid;
-      return;
-    }
-
-    // User IS logged in: Firestore is source-of-truth
-    logger.log(`[PortfolioData] 🔐 User is logged in - setting up Firestore listener for ${key}`);
+  // Create stable callback that uses refs for latest values
+  callbackRef.current = (documentData, loadingState, err) => {
+    const currentKey = keyRef.current;
+    const currentDefault = defaultValueRef.current;
     
-    const path = getPortfolioDocPath(currentUid);
-    logger.log(`[PortfolioData] - Firestore path: ${path}`);
-    logger.log(`[PortfolioData] - Path matches rules: users/{userId}/portfolio/{document=**}`);
-    logger.log(`[PortfolioData] - Using portfolioDocRef() helper (same as WRITE)`);
+    // Extract the specific field from the document
+    if (err) {
+      // Only update error state if error actually changed
+      if (lastErrorRef.current !== err) {
+        setError(err);
+        lastErrorRef.current = err;
+      }
+      // Only update data if it's not already the default
+      setData(prevData => {
+        try {
+          if (JSON.stringify(prevData) === JSON.stringify(currentDefault)) {
+            return prevData;
+          }
+        } catch (e) {
+          if (prevData === currentDefault) {
+            return prevData;
+          }
+        }
+        return currentDefault;
+      });
+      // Only update loading if it's not already false
+      if (lastLoadingRef.current !== false) {
+        setLoading(false);
+        lastLoadingRef.current = false;
+      }
+    } else {
+      const fieldValue = documentData[currentKey] !== undefined ? documentData[currentKey] : currentDefault;
+      
+      // Only update state if value actually changed (prevent infinite loops)
+      setData(prevData => {
+        // Faster comparison: check if same reference first (for objects/arrays)
+        if (prevData === fieldValue) {
+          return prevData;
+        }
+        
+        // For primitives, direct comparison
+        if (typeof prevData !== 'object' || prevData === null) {
+          return prevData === fieldValue ? prevData : fieldValue;
+        }
+        
+        // For objects/arrays, use JSON.stringify but with try-catch
+        try {
+          if (JSON.stringify(prevData) === JSON.stringify(fieldValue)) {
+            return prevData; // No change, return previous to prevent re-render
+          }
+        } catch (e) {
+          // If JSON.stringify fails, do shallow comparison
+          if (prevData === fieldValue) {
+            return prevData;
+          }
+        }
+        return fieldValue;
+      });
+      
+      // Only update error state if it's not already null
+      if (lastErrorRef.current !== null) {
+        setError(null);
+        lastErrorRef.current = null;
+      }
+      
+      // Only update loading state if it actually changed
+      if (lastLoadingRef.current !== loadingState) {
+        setLoading(loadingState);
+        lastLoadingRef.current = loadingState;
+      }
+    }
+  };
 
-    const docRef = portfolioDocRef(db, currentUid);
-    if (!docRef) {
-      logger.error(`[PortfolioData] ❌ portfolioDocRef returned null`);
-      setData(defaultValue);
-      setLoading(false);
-      setError(new Error('Document reference is null'));
-      previousUidRef.current = currentUid;
+  // Subscribe to shared portfolio document listener
+  useEffect(() => {
+    const isLoggedIn = uid && db && !hasFirebaseError;
+
+    // Clean up previous subscription if UID changed
+    if (subscriptionIdRef.current && previousUidRef.current !== uid) {
+      unsubscribeFromPortfolioDocument(previousUidRef.current, subscriptionIdRef.current);
+      subscriptionIdRef.current = null;
+    }
+
+    // If user is NOT logged in: set default value once and return
+    if (!isLoggedIn) {
+      // Only set state if we're actually changing from logged in to logged out
+      if (previousUidRef.current !== null) {
+        setData(defaultValueRef.current);
+        setLoading(false);
+        setError(null);
+        // Reset refs when logging out
+        lastErrorRef.current = null;
+        lastLoadingRef.current = false;
+      }
+      previousUidRef.current = uid;
       return;
     }
 
-    setLoading(true);
-    setError(null);
-
-    // Set up onSnapshot listener
-    logger.log(`[PortfolioData] 📡 Setting up onSnapshot listener for ${key}`);
-    logger.log(`[PortfolioData] - Reading from: ${path}`);
-    logger.log(`[PortfolioData] - Using same docRef as WRITE operations`);
-
-    unsubscribeRef.current = onSnapshot(
-      docRef,
-      (snapshot) => {
-        try {
-          logger.log(`[PortfolioData] ===== READ (onSnapshot callback) =====`);
-          logger.log(`[PortfolioData] - Field: ${key}`);
-          logger.log(`[PortfolioData] - currentUser.uid: ${currentUid}`);
-          logger.log(`[PortfolioData] - Firestore path: ${path}`);
-          logger.log(`[PortfolioData] - snapshot.exists(): ${snapshot.exists()}`);
-
-          if (snapshot.exists()) {
-            const firestoreData = snapshot.data();
-            const fields = Object.keys(firestoreData);
-            logger.log(`[PortfolioData] - Firestore data fields: ${fields.join(', ')}`);
-
-            // Extract the specific key from Firestore document
-            if (firestoreData[key] !== undefined) {
-              logger.log(`[PortfolioData] ✅ Found field "${key}" in Firestore`);
-              logger.log(`[PortfolioData] - Data preview: ${JSON.stringify(firestoreData[key]).substring(0, 100)}...`);
-              
-              setData(firestoreData[key]);
-              setError(null);
-            } else {
-              logger.warn(`[PortfolioData] ⚠️ Field "${key}" NOT found in Firestore document`);
-              logger.warn(`[PortfolioData] - Available fields: ${fields.join(', ')}`);
-              logger.warn(`[PortfolioData] - Using default value`);
-              
-              // Field doesn't exist - use default value
-              setData(defaultValue);
-              setError(null);
-            }
-          } else {
-            // Document doesn't exist yet
-            logger.log(`[PortfolioData] ⚠️ Document doesn't exist at ${path}`);
-            logger.log(`[PortfolioData] - Using default value`);
-            
-            // Document doesn't exist - use default value
-            setData(defaultValue);
-            setError(null);
-          }
-          
-          setLoading(false);
-        } catch (err) {
-          logger.error(`[PortfolioData] ❌ Error in onSnapshot callback for ${key}:`, err);
-          setError(err);
-          setData(defaultValue);
-          setLoading(false);
-        }
-      },
-      (err) => {
-        logger.error(`[PortfolioData] ❌ onSnapshot error for ${key}:`, err);
-        logger.error(`[PortfolioData] - Error code: ${err.code}, message: ${err.message}`);
-        
-        // Check for permission errors
-        if (err.code === 'permission-denied' || err.code === 'PERMISSION_DENIED' || 
-            (err.message && err.message.includes('Missing or insufficient permissions'))) {
-          logger.error(`[PortfolioData] - Permission denied! Check Firestore rules match path: ${path}`);
-          setFirestorePermissionError(err);
-        }
-        
-        setError(err);
-        setData(defaultValue);
-        setLoading(false);
-      }
-    );
-
-    // Update previous UID reference
-    previousUidRef.current = currentUid;
+    // Only subscribe if we don't already have a subscription for this UID
+    // Note: callbackRef.current uses refs (keyRef, defaultValueRef) internally,
+    // so it will always read the latest values even if the callback function
+    // reference doesn't change. No need to update callback in subscription.
+    if (!subscriptionIdRef.current) {
+      // Subscribe to shared document listener
+      const subscriptionId = subscribeToPortfolioDocument(uid, callbackRef.current);
+      subscriptionIdRef.current = subscriptionId;
+    }
+    
+    previousUidRef.current = uid;
 
     // Cleanup function
     return () => {
-      if (unsubscribeRef.current) {
-        logger.log(`[PortfolioData] 🧹 Cleaning up Firestore listener for ${key}, UID: ${previousUidRef.current}`);
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
+      if (subscriptionIdRef.current && previousUidRef.current) {
+        unsubscribeFromPortfolioDocument(previousUidRef.current, subscriptionIdRef.current);
+        subscriptionIdRef.current = null;
       }
     };
-  }, [user?.uid, key, defaultValue, firebaseError]);
+  }, [uid, hasFirebaseError]); // Stable dependencies: only uid (string) and firebaseError flag
 
   // Update function that saves to Firestore
   const updateData = useCallback((newData) => {
-    const currentUid = user?.uid;
-    logger.log(`[PortfolioData] updateData called for ${key}, user: ${currentUid || 'logged out'}`);
-
     // Update local state optimistically
     setData(prevData => {
       const valueToStore = typeof newData === 'function' ? newData(prevData) : newData;
       
       // Save to Firestore if user is logged in (fire and forget, but log errors)
-      if (currentUid && db && !firebaseError) {
+      if (uid && db && !hasFirebaseError) {
         // Use setDoc with merge to ensure data is persisted
-        saveToFirestore(valueToStore, currentUid).then(() => {
-          logger.log(`[PortfolioData] ✅ Successfully saved ${key} update to Firestore`);
+        saveToFirestore(valueToStore, uid).then(() => {
           // onSnapshot will confirm the update, ensuring consistency
         }).catch(err => {
           logger.error(`[PortfolioData] ❌ Failed to save ${key} to Firestore:`, err);
-          logger.error(`[PortfolioData] - Error details:`, err);
           setError(err);
           // Note: onSnapshot will eventually sync the correct state from Firestore
         });
-      } else {
-        logger.warn(`[PortfolioData] Cannot save ${key} - user not logged in or Firebase not available`);
       }
 
       return valueToStore;
     });
-  }, [user?.uid, key, saveToFirestore]);
+  }, [uid, hasFirebaseError, key, saveToFirestore]);
 
   return [data, updateData, loading, error];
 };

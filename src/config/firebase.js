@@ -18,6 +18,7 @@ const firebaseConfig = {
 
 // Helper to check if we're in local development
 export const isLocalDev = () => {
+  console.log('import.meta.env.PROD', import.meta.env);
   if (import.meta.env.PROD === true) {
     return false;
   }
