@@ -88,7 +88,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
     }
 
     const docPath = `users/${uid}/portfolio/data`;
-    logger.log(`[PortfolioData] 📝 Saving ${key} to Firestore: ${docPath}`);
+    console.log(`[PortfolioData] 📝 Saving ${key} to Firestore: ${docPath}`);
 
     try {
       await setDoc(
@@ -96,7 +96,7 @@ export const usePortfolioData = (user, key, defaultValue) => {
         { [key]: value, updatedAt: new Date().toISOString() },
         { merge: true }
       );
-      logger.log(`[PortfolioData] ✅ Successfully saved ${key} to ${docPath}`);
+      console.log(`[PortfolioData] ✅ Successfully saved ${key} to ${docPath}`);
     } catch (err) {
       logger.error(`[PortfolioData] ❌ WRITE: Failed to save ${key} to Firestore:`, err);
       logger.error(`[PortfolioData] - Path: ${docPath}`);
@@ -234,28 +234,41 @@ export const usePortfolioData = (user, key, defaultValue) => {
 
   // Update function that saves to Firestore
   const updateData = useCallback((newData) => {
+    // Always log when updateData is called (use console.error for visibility in production too)
+    console.log(`[PortfolioData] 🔄 updateData called for key="${key}"`, { 
+      hasUid: !!uid, 
+      uid: uid ? uid.substring(0, 8) + '...' : 'null',
+      hasDb: !!db,
+      hasFirebaseError: !!hasFirebaseError 
+    });
+    
     // Update local state optimistically
     setData(prevData => {
       const valueToStore = typeof newData === 'function' ? newData(prevData) : newData;
       
+      // Log the value that will be stored (for transactions, log a summary)
+      if (key === 'transactions' && Array.isArray(valueToStore)) {
+        console.log(`[PortfolioData] 💼 Transactions array updated: ${valueToStore.length} transactions`, valueToStore.slice(0, 3));
+      }
+      
       // Save to Firestore if user is logged in (fire and forget, but log errors)
       if (uid && db && !hasFirebaseError) {
-        // Log write attempt for debugging
-        logger.log(`[PortfolioData] 💾 WRITE attempt: key="${key}", uid="${uid.substring(0, 8)}...", path="users/${uid}/portfolio/data"`);
+        // Log write attempt for debugging (always visible)
+        console.log(`[PortfolioData] 💾 WRITE attempt: key="${key}", uid="${uid.substring(0, 8)}...", path="users/${uid}/portfolio/data"`);
         
         // Use setDoc with merge to ensure data is persisted
         saveToFirestore(valueToStore, uid).then(() => {
-          logger.log(`[PortfolioData] ✅ WRITE success: key="${key}" saved to Firestore`);
+          console.log(`[PortfolioData] ✅ WRITE success: key="${key}" saved to Firestore`);
           // onSnapshot will confirm the update, ensuring consistency
         }).catch(err => {
-          logger.error(`[PortfolioData] ❌ Failed to save ${key} to Firestore:`, err);
-          logger.error(`[PortfolioData] - UID: ${uid}, Error code: ${err.code}, Message: ${err.message}`);
+          console.error(`[PortfolioData] ❌ Failed to save ${key} to Firestore:`, err);
+          console.error(`[PortfolioData] - UID: ${uid}, Error code: ${err.code}, Message: ${err.message}`);
           setError(err);
           // Note: onSnapshot will eventually sync the correct state from Firestore
         });
       } else {
-        // Log why we're not saving
-        logger.warn(`[PortfolioData] ⚠️ Cannot save ${key} to Firestore:`, {
+        // Log why we're not saving (always visible)
+        console.warn(`[PortfolioData] ⚠️ Cannot save ${key} to Firestore:`, {
           hasUid: !!uid,
           hasDb: !!db,
           hasFirebaseError: !!hasFirebaseError,

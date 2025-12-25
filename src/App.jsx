@@ -737,6 +737,8 @@ function App() {
     e.preventDefault();
     if (!form.symbol) return;
     
+    console.log('[App] handleSave called', { symbol: form.symbol, shares: form.shares, editId });
+    
     const s = Number(form.shares);
     const p = Number(form.purchasePrice);
     const c = Number(form.commission) || 0;
@@ -744,17 +746,22 @@ function App() {
     
     // Add transaction
     if (s > 0 && !editId) {
-      setTransactions(tr => [{
-        id: Date.now(),
-        date: new Date().toISOString(),
-        type: 'KÖP',
-        symbol: form.symbol,
-        shares: s,
-        price: p,
-        commission: c,
-        commissionCurrency: form.commissionCurrency,
-        broker: form.broker
-      }, ...tr]);
+      console.log('[App] Adding transaction via setTransactions', { symbol: form.symbol, shares: s, price: p });
+      setTransactions(tr => {
+        const newTransaction = {
+          id: Date.now(),
+          date: new Date().toISOString(),
+          type: 'KÖP',
+          symbol: form.symbol,
+          shares: s,
+          price: p,
+          commission: c,
+          commissionCurrency: form.commissionCurrency,
+          broker: form.broker
+        };
+        console.log('[App] setTransactions callback called, new transaction:', newTransaction);
+        return [newTransaction, ...tr];
+      });
     }
     
     setData(d => {

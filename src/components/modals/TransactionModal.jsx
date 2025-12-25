@@ -95,6 +95,14 @@ const TransactionModal = memo(({
   
   const handleSubmit = (e) => {
     e.preventDefault();
+    console.log('[TransactionModal] handleSubmit called', { 
+      form: { 
+        symbol: form.symbol, 
+        shares: form.shares, 
+        purchasePrice: form.purchasePrice,
+        editId 
+      } 
+    });
     onSave(e);
     onClose();
   };
